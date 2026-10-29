@@ -28,3 +28,21 @@ export const PublicUserSchema = z.object({
 });
 
 export type PublicUser = z.infer<typeof PublicUserSchema>;
+
+export const LoginRequestSchema = z
+  .object({
+    email: z.email().trim().toLowerCase(),
+    password: z.string().min(1),
+  })
+  .strict();
+
+export type LoginRequest = z.infer<typeof LoginRequestSchema>;
+
+export const LoginResponseSchema = z.object({
+  accessToken: z.string(),
+  tokenType: z.literal("Bearer"),
+  expiresIn: z.number().int().positive(),
+  user: PublicUserSchema,
+});
+
+export type LoginResponse = z.infer<typeof LoginResponseSchema>;
