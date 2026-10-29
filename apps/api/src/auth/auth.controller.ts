@@ -5,9 +5,20 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Get,
+  Req,
+  UseGuards,
 } from "@nestjs/common";
 
-import { ApiBody, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import {
+  ApiBody,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  ApiBearerAuth,
+} from "@nestjs/swagger";
+
+import { JwtAuthGuard, type AuthenticatedRequest } from "./jwt-auth.guard";
 
 import {
   RegisterRequestSchema,
@@ -125,5 +136,23 @@ export class AuthController {
     }
 
     return this.auth.login(result.data);
+  }
+
+  @Get("me")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Get current authenticated user",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Authenticated user profile",
+  })
+  @ApiResponse({
+    status: 401,
+    description: "Missing, invalid, or expired access token",
+  })
+  async getMe(@Req() request: AuthenticatedRequest) {
+    return this.auth.getMe(request.user.id);
   }
 }

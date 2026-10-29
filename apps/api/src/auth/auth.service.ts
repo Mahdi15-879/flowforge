@@ -112,4 +112,25 @@ export class AuthService {
       user: publicUser,
     });
   }
+
+  async getMe(userId: string): Promise<PublicUser> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        createdAt: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException("User account no longer exists");
+    }
+
+    return PublicUserSchema.parse({
+      ...user,
+      createdAt: user.createdAt.toISOString(),
+    });
+  }
 }

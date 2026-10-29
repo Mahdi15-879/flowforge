@@ -3,6 +3,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
+import { JwtAuthGuard } from "./jwt-auth.guard";
 
 describe("AuthController (HTTP)", () => {
   let app: INestApplication;
@@ -17,7 +18,12 @@ describe("AuthController (HTTP)", () => {
           useValue: { register },
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({
+        canActivate: jest.fn().mockReturnValue(true),
+      })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix("api/v1");

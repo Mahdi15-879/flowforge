@@ -176,4 +176,41 @@ describe("AuthService", () => {
       expect(signAsync).not.toHaveBeenCalled();
     });
   });
+
+  describe("getMe", () => {
+    it("returns the public profile of an existing user", async () => {
+      const userId = "550e8400-e29b-41d4-a716-446655440000";
+
+      findUnique.mockResolvedValue({
+        id: userId,
+        email: "mahdi.test@example.com",
+        name: "Mahdi Test",
+        createdAt: new Date("2026-10-29T12:00:00.000Z"),
+      });
+
+      const result = await service.getMe(userId);
+
+      expect(result.id).toBe(userId);
+      expect(result.email).toBe("mahdi.test@example.com");
+      expect(result).not.toHaveProperty("passwordHash");
+
+      expect(findUnique).toHaveBeenCalledWith({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          createdAt: true,
+        },
+      });
+    });
+
+    it("rejects a user that no longer exists", async () => {
+      findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.getMe("550e8400-e29b-41d4-a716-446655440000"),
+      ).rejects.toThrow("User account no longer exists");
+    });
+  });
 });
