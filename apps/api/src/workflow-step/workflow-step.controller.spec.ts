@@ -83,6 +83,46 @@ describe("WorkflowStepController", () => {
     expect(result.name).toBe("Daily Trigger");
   });
 
+  it("passes a valid HTTP_REQUEST action config to the service", async () => {
+    const body = {
+      name: "Call External API",
+      type: "ACTION",
+      position: 0,
+      config: {
+        operation: "HTTP_REQUEST",
+        url: "https://example.com/api",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: '{"message":"hello"}',
+      },
+    };
+
+    workflowStepService.create.mockResolvedValue({
+      ...step,
+      name: body.name,
+      type: body.type,
+      config: body.config,
+    });
+
+    const result = await controller.create(
+      request,
+      workspaceId,
+      workflowId,
+      body,
+    );
+
+    expect(workflowStepService.create).toHaveBeenCalledWith(
+      userId,
+      workspaceId,
+      workflowId,
+      body,
+    );
+
+    expect(result.config).toEqual(body.config);
+  });
+
   it("rejects a negative step position", async () => {
     await expect(
       controller.create(request, workspaceId, workflowId, {
@@ -185,6 +225,47 @@ describe("WorkflowStepController", () => {
     );
 
     expect(result.name).toBe("Updated Trigger");
+  });
+
+  it("passes a valid SCHEDULE config update to the service", async () => {
+    const body = {
+      config: {
+        operation: "SCHEDULE",
+        cron: "0 9 * * *",
+        timezone: "Europe/Berlin",
+      },
+    };
+
+    const updatedStep = {
+      ...step,
+      config: body.config,
+    };
+
+    workflowStepService.update.mockResolvedValue(updatedStep);
+
+    const result = await controller.update(
+      request,
+      workspaceId,
+      workflowId,
+      stepId,
+      body,
+    );
+
+    expect(workflowStepService.update).toHaveBeenCalledWith(
+      userId,
+      workspaceId,
+      workflowId,
+      stepId,
+      body,
+    );
+
+    expect(result.config).toEqual({
+      operation: "SCHEDULE",
+      cron: "0 9 * * *",
+      timezone: "Europe/Berlin",
+    });
+
+    expect(result.name).toBe("Daily Trigger");
   });
 
   it("rejects an empty update body", async () => {

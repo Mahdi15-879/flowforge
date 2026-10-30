@@ -68,8 +68,11 @@ export class WorkflowStepController {
         config: {
           type: "object",
           additionalProperties: true,
+          description:
+            "Step configuration. Use operation=SCHEDULE for TRIGGER or operation=HTTP_REQUEST for ACTION. Empty objects are supported for legacy steps.",
           example: {
-            schedule: "0 9 * * *",
+            operation: "SCHEDULE",
+            cron: "0 9 * * *",
             timezone: "Europe/Berlin",
           },
         },
@@ -214,8 +217,12 @@ export class WorkflowStepController {
         config: {
           type: "object",
           additionalProperties: true,
+          description:
+            "Configuration must match the existing step type. Empty objects are supported for legacy steps.",
           example: {
-            enabled: true,
+            operation: "HTTP_REQUEST",
+            url: "https://example.com/api",
+            method: "GET",
           },
         },
       },
