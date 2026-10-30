@@ -8,6 +8,7 @@ import {
 } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { WorkflowExecutionService } from "./workflow-execution.service";
+import { WorkflowOrchestratorService } from "./workflow-orchestrator.service";
 
 type AuthenticatedRequest = {
   user: { id: string };
@@ -20,6 +21,7 @@ type AuthenticatedRequest = {
 export class WorkflowExecutionController {
   constructor(
     private readonly workflowExecutionService: WorkflowExecutionService,
+    private readonly orchestrator: WorkflowOrchestratorService,
   ) {}
 
   @Post()
@@ -51,10 +53,23 @@ export class WorkflowExecutionController {
     @Param("workspaceId") workspaceId: string,
     @Param("workflowId") workflowId: string,
   ) {
-    return this.workflowExecutionService.startRun(
+    const run = await this.workflowExecutionService.startRun(
       request.user.id,
       workspaceId,
       workflowId,
     );
+
+    try {
+      return await this.orchestrator.execute(run.id);
+    } catch (error) {
+      // The orchestrator persists the failure before throwing.
+      // Return the run ID so its execution can be inspected.
+      return {
+        runId: run.id,
+        status: "FAILED",
+        error:
+          error instanceof Error ? error.message : "Workflow execution failed",
+      };
+    }
   }
 }

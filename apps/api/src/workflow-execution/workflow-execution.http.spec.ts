@@ -9,12 +9,17 @@ import { JwtModule, JwtService } from "@nestjs/jwt";
 import request from "supertest";
 import { WorkflowExecutionController } from "./workflow-execution.controller";
 import { WorkflowExecutionService } from "./workflow-execution.service";
+import { WorkflowOrchestratorService } from "./workflow-orchestrator.service";
 
 describe("WorkflowExecution HTTP", () => {
   let app: INestApplication;
 
   const executionService = {
     startRun: jest.fn(),
+  };
+
+  const orchestrator = {
+    execute: jest.fn(),
   };
 
   const testJwtSecret = "flowforge-http-test-secret-2026-minimum-32-characters";
@@ -38,6 +43,10 @@ describe("WorkflowExecution HTTP", () => {
         {
           provide: WorkflowExecutionService,
           useValue: executionService,
+        },
+        {
+          provide: WorkflowOrchestratorService,
+          useValue: orchestrator,
         },
       ],
     }).compile();
@@ -148,12 +157,21 @@ describe("WorkflowExecution HTTP", () => {
 
     executionService.startRun.mockResolvedValue(expectedRun);
 
+    const completedRun = {
+      id: "run-123",
+      workflowId: "workflow-123",
+      status: "SUCCEEDED",
+    };
+
+    orchestrator.execute.mockResolvedValue(completedRun);
+
     const response = await request(app.getHttpServer())
       .post("/api/v1/workspaces/workspace-123/workflows/workflow-123/runs")
       .set("Authorization", `Bearer ${token}`)
       .expect(201);
 
-    expect(response.body).toEqual(expectedRun);
+    expect(response.body).toEqual(completedRun);
+    expect(orchestrator.execute).toHaveBeenCalledWith("run-123");
 
     expect(executionService.startRun).toHaveBeenCalledWith(
       "owner-user-123",

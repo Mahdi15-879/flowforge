@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { WorkflowExecutionController } from "./workflow-execution.controller";
 import { WorkflowExecutionService } from "./workflow-execution.service";
+import { WorkflowOrchestratorService } from "./workflow-orchestrator.service";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 
 describe("WorkflowExecutionController", () => {
@@ -8,6 +9,10 @@ describe("WorkflowExecutionController", () => {
 
   const executionService = {
     startRun: jest.fn(),
+  };
+
+  const orchestrator = {
+    execute: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -19,6 +24,10 @@ describe("WorkflowExecutionController", () => {
         {
           provide: WorkflowExecutionService,
           useValue: executionService,
+        },
+        {
+          provide: WorkflowOrchestratorService,
+          useValue: orchestrator,
         },
       ],
     })
@@ -33,7 +42,7 @@ describe("WorkflowExecutionController", () => {
     );
   });
 
-  it("starts a workflow run for the authenticated user", async () => {
+  it("creates and executes a workflow run for the authenticated user", async () => {
     const request = {
       user: { id: "user-123" },
     };
@@ -41,14 +50,21 @@ describe("WorkflowExecutionController", () => {
     const workspaceId = "workspace-123";
     const workflowId = "workflow-123";
 
-    const expectedRun = {
+    const pendingRun = {
       id: "run-123",
       workflowId,
       status: "PENDING",
       stepRuns: [],
     };
 
-    executionService.startRun.mockResolvedValue(expectedRun);
+    const completedRun = {
+      id: "run-123",
+      workflowId,
+      status: "SUCCEEDED",
+    };
+
+    executionService.startRun.mockResolvedValue(pendingRun);
+    orchestrator.execute.mockResolvedValue(completedRun);
 
     const result = await controller.startRun(request, workspaceId, workflowId);
 
@@ -58,7 +74,8 @@ describe("WorkflowExecutionController", () => {
       workflowId,
     );
 
-    expect(executionService.startRun).toHaveBeenCalledTimes(1);
-    expect(result).toEqual(expectedRun);
+    expect(orchestrator.execute).toHaveBeenCalledWith("run-123");
+    expect(orchestrator.execute).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(completedRun);
   });
 });

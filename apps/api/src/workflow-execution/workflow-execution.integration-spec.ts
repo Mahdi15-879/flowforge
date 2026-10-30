@@ -5,6 +5,7 @@ import { WorkspaceAccessService } from "../workspace/workspace-access.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { assertIntegrationDatabase } from "./integration-db.guard";
 import { WorkflowRunnerService } from "./workflow-runner.service";
+import { StepRunnerService } from "./step-runner.service";
 
 describe("WorkflowExecutionService — PostgreSQL integration", () => {
   const prisma = new PrismaService();
@@ -12,6 +13,7 @@ describe("WorkflowExecutionService — PostgreSQL integration", () => {
   const workspaceAccess = new WorkspaceAccessService(prisma);
   const service = new WorkflowExecutionService(prisma, workspaceAccess);
   const runner = new WorkflowRunnerService(prisma);
+  const stepRunner = new StepRunnerService(prisma);
 
   let userId: string;
   let workspaceId: string;
@@ -610,5 +612,214 @@ describe("WorkflowExecutionService — PostgreSQL integration", () => {
     await expect(runner.markRunAsSucceeded(run.id)).rejects.toMatchObject({
       status: 409,
     });
+  });
+
+  it("persists step transition from PENDING to RUNNING", async () => {
+    const suffix = randomUUID();
+
+    const user = await prisma.user.create({
+      data: {
+        email: `step-running-${suffix}@example.test`,
+      },
+    });
+    userId = user.id;
+
+    const workspace = await prisma.workspace.create({
+      data: {
+        name: "Step Running Integration Test",
+        slug: `step-running-${suffix}`,
+        memberships: {
+          create: { userId, role: "OWNER" },
+        },
+      },
+    });
+    workspaceId = workspace.id;
+
+    const workflow = await prisma.workflow.create({
+      data: {
+        name: "Step Running Workflow",
+        workspaceId,
+        steps: {
+          create: {
+            name: "Start",
+            type: "TRIGGER",
+            position: 0,
+            config: {},
+          },
+        },
+      },
+    });
+
+    const run = await service.startRun(userId, workspaceId, workflow.id);
+
+    await runner.markRunAsRunning(run.id);
+
+    const stepRunId = run.stepRuns[0].id;
+
+    const runningStep = await stepRunner.markStepAsRunning(stepRunId);
+
+    expect(runningStep.status).toBe("RUNNING");
+    expect(runningStep.startedAt).toBeInstanceOf(Date);
+
+    const persistedStep = await prisma.stepRun.findUniqueOrThrow({
+      where: { id: stepRunId },
+    });
+
+    expect(persistedStep.status).toBe("RUNNING");
+    expect(persistedStep.startedAt).not.toBeNull();
+    expect(persistedStep.finishedAt).toBeNull();
+
+    await expect(stepRunner.markStepAsRunning(stepRunId)).rejects.toMatchObject(
+      { status: 409 },
+    );
+  });
+
+  it("persists successful step completion with JSON output", async () => {
+    const suffix = randomUUID();
+
+    const user = await prisma.user.create({
+      data: {
+        email: `step-success-${suffix}@example.test`,
+      },
+    });
+    userId = user.id;
+
+    const workspace = await prisma.workspace.create({
+      data: {
+        name: "Step Success Integration Test",
+        slug: `step-success-${suffix}`,
+        memberships: {
+          create: { userId, role: "OWNER" },
+        },
+      },
+    });
+    workspaceId = workspace.id;
+
+    const workflow = await prisma.workflow.create({
+      data: {
+        name: "Step Success Workflow",
+        workspaceId,
+        steps: {
+          create: {
+            name: "Start",
+            type: "TRIGGER",
+            position: 0,
+            config: {},
+          },
+        },
+      },
+    });
+
+    const run = await service.startRun(userId, workspaceId, workflow.id);
+
+    await runner.markRunAsRunning(run.id);
+
+    const stepRunId = run.stepRuns[0].id;
+
+    await stepRunner.markStepAsRunning(stepRunId);
+
+    const output = {
+      statusCode: 200,
+      message: "Step executed successfully",
+      data: { count: 3 },
+    };
+
+    const succeededStep = await stepRunner.markStepAsSucceeded(
+      stepRunId,
+      output,
+    );
+
+    expect(succeededStep.status).toBe("SUCCEEDED");
+    expect(succeededStep.output).toEqual(output);
+    expect(succeededStep.finishedAt).toBeInstanceOf(Date);
+
+    const persistedStep = await prisma.stepRun.findUniqueOrThrow({
+      where: { id: stepRunId },
+    });
+
+    expect(persistedStep.status).toBe("SUCCEEDED");
+    expect(persistedStep.output).toEqual(output);
+    expect(persistedStep.startedAt).not.toBeNull();
+    expect(persistedStep.finishedAt).not.toBeNull();
+    expect(persistedStep.error).toBeNull();
+
+    await expect(
+      stepRunner.markStepAsSucceeded(stepRunId, output),
+    ).rejects.toMatchObject({ status: 409 });
+
+    await expect(
+      stepRunner.markStepAsFailed(stepRunId, "Late failure"),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("persists failed step completion with error message", async () => {
+    const suffix = randomUUID();
+
+    const user = await prisma.user.create({
+      data: {
+        email: `step-failure-${suffix}@example.test`,
+      },
+    });
+    userId = user.id;
+
+    const workspace = await prisma.workspace.create({
+      data: {
+        name: "Step Failure Integration Test",
+        slug: `step-failure-${suffix}`,
+        memberships: {
+          create: { userId, role: "OWNER" },
+        },
+      },
+    });
+    workspaceId = workspace.id;
+
+    const workflow = await prisma.workflow.create({
+      data: {
+        name: "Step Failure Workflow",
+        workspaceId,
+        steps: {
+          create: {
+            name: "Start",
+            type: "TRIGGER",
+            position: 0,
+            config: {},
+          },
+        },
+      },
+    });
+
+    const run = await service.startRun(userId, workspaceId, workflow.id);
+
+    await runner.markRunAsRunning(run.id);
+
+    const stepRunId = run.stepRuns[0].id;
+
+    await stepRunner.markStepAsRunning(stepRunId);
+
+    const error = "HTTP request failed with status 500";
+
+    const failedStep = await stepRunner.markStepAsFailed(stepRunId, error);
+
+    expect(failedStep.status).toBe("FAILED");
+    expect(failedStep.error).toBe(error);
+    expect(failedStep.finishedAt).toBeInstanceOf(Date);
+
+    const persistedStep = await prisma.stepRun.findUniqueOrThrow({
+      where: { id: stepRunId },
+    });
+
+    expect(persistedStep.status).toBe("FAILED");
+    expect(persistedStep.error).toBe(error);
+    expect(persistedStep.output).toBeNull();
+    expect(persistedStep.startedAt).not.toBeNull();
+    expect(persistedStep.finishedAt).not.toBeNull();
+
+    await expect(
+      stepRunner.markStepAsFailed(stepRunId, error),
+    ).rejects.toMatchObject({ status: 409 });
+
+    await expect(
+      stepRunner.markStepAsSucceeded(stepRunId, {}),
+    ).rejects.toMatchObject({ status: 409 });
   });
 });
