@@ -93,7 +93,7 @@ describe("WorkflowStepService", () => {
       name: "Daily Trigger",
       type: "TRIGGER",
       position: 0,
-      config: { enabled: true },
+      config: {},
     });
 
     expect(workspaceAccess.requireRole).toHaveBeenCalledWith(
@@ -108,7 +108,7 @@ describe("WorkflowStepService", () => {
         name: "Daily Trigger",
         type: "TRIGGER",
         position: 0,
-        config: { enabled: true },
+        config: {},
       },
     });
 
@@ -117,6 +117,98 @@ describe("WorkflowStepService", () => {
     expect(result.createdAt).toBe("2026-10-30T08:00:00.000Z");
 
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates an HTTP_REQUEST action with valid configuration", async () => {
+    tx.workflowStep.count.mockResolvedValue(0);
+
+    const config = {
+      operation: "HTTP_REQUEST",
+      url: "https://example.com/api",
+      method: "POST",
+    };
+
+    tx.workflowStep.create.mockImplementation(async ({ data }) => ({
+      ...step,
+      name: data.name,
+      type: data.type,
+      config: data.config,
+    }));
+
+    const result = await service.create(userId, workspaceId, workflowId, {
+      name: "Call External API",
+      type: "ACTION",
+      position: 0,
+      config,
+    });
+
+    expect(tx.workflowStep.create).toHaveBeenCalledWith({
+      data: {
+        workflowId,
+        name: "Call External API",
+        type: "ACTION",
+        position: 0,
+        config,
+      },
+    });
+
+    expect(result.config).toEqual(config);
+  });
+
+  it("creates a SCHEDULE trigger with default UTC timezone", async () => {
+    tx.workflowStep.count.mockResolvedValue(0);
+
+    tx.workflowStep.create.mockImplementation(async ({ data }) => ({
+      ...step,
+      name: data.name,
+      type: data.type,
+      config: data.config,
+    }));
+
+    const result = await service.create(userId, workspaceId, workflowId, {
+      name: "Daily Schedule",
+      type: "TRIGGER",
+      position: 0,
+      config: {
+        operation: "SCHEDULE",
+        cron: "0 9 * * *",
+      },
+    });
+
+    expect(tx.workflowStep.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        config: {
+          operation: "SCHEDULE",
+          cron: "0 9 * * *",
+          timezone: "UTC",
+        },
+      }),
+    });
+
+    expect(result.config).toEqual({
+      operation: "SCHEDULE",
+      cron: "0 9 * * *",
+      timezone: "UTC",
+    });
+  });
+
+  it("rejects invalid configuration without inserting a step", async () => {
+    tx.workflowStep.count.mockResolvedValue(0);
+
+    await expect(
+      service.create(userId, workspaceId, workflowId, {
+        name: "Invalid Action",
+        type: "ACTION",
+        position: 0,
+        config: {
+          operation: "SCHEDULE",
+          cron: "0 9 * * *",
+          timezone: "UTC",
+        },
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(tx.workflowStep.create).not.toHaveBeenCalled();
   });
 
   it("rejects creation by a MEMBER", async () => {
@@ -302,12 +394,20 @@ describe("WorkflowStepService", () => {
     prisma.workflow.findFirst.mockResolvedValue({
       id: workflowId,
     });
+
+    prisma.workflowStep.findFirst
+      .mockResolvedValueOnce({ type: "TRIGGER" })
+      .mockResolvedValueOnce({
+        ...step,
+        config: {
+          operation: "SCHEDULE",
+          cron: "0 9 * * *",
+          timezone: "UTC",
+        },
+      });
+
     prisma.workflowStep.updateMany.mockResolvedValue({
       count: 1,
-    });
-    prisma.workflowStep.findFirst.mockResolvedValue({
-      ...step,
-      config: { enabled: false },
     });
 
     const result = await service.update(
@@ -315,17 +415,117 @@ describe("WorkflowStepService", () => {
       workspaceId,
       workflowId,
       stepId,
-      { config: { enabled: false } },
+      {
+        config: {
+          operation: "SCHEDULE",
+          cron: "0 9 * * *",
+        },
+      },
     );
 
     expect(prisma.workflowStep.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { config: { enabled: false } },
+        data: {
+          config: {
+            operation: "SCHEDULE",
+            cron: "0 9 * * *",
+            timezone: "UTC",
+          },
+        },
       }),
     );
 
-    expect(result.config).toEqual({ enabled: false });
+    expect(result.config).toEqual({
+      operation: "SCHEDULE",
+      cron: "0 9 * * *",
+      timezone: "UTC",
+    });
+
     expect(result.name).toBe("Daily Trigger");
+  });
+
+  it("rejects invalid config updates without modifying the database", async () => {
+    prisma.workflow.findFirst.mockResolvedValue({
+      id: workflowId,
+    });
+
+    prisma.workflowStep.findFirst.mockResolvedValue({
+      type: "ACTION",
+    });
+
+    await expect(
+      service.update(userId, workspaceId, workflowId, stepId, {
+        config: {
+          operation: "SCHEDULE",
+          cron: "0 9 * * *",
+          timezone: "UTC",
+        },
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(prisma.workflowStep.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: stepId,
+        workflowId,
+        workflow: {
+          workspaceId,
+          workspace: {
+            memberships: {
+              some: {
+                userId,
+                role: { in: ["OWNER", "ADMIN"] },
+              },
+            },
+          },
+        },
+      },
+      select: {
+        type: true,
+      },
+    });
+
+    expect(prisma.workflowStep.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when updating config of a missing or inaccessible step", async () => {
+    prisma.workflow.findFirst.mockResolvedValue({
+      id: workflowId,
+    });
+
+    prisma.workflowStep.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.update(userId, workspaceId, workflowId, stepId, {
+        config: {
+          operation: "HTTP_REQUEST",
+          url: "https://example.com/api",
+          method: "GET",
+        },
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(prisma.workflowStep.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: stepId,
+        workflowId,
+        workflow: {
+          workspaceId,
+          workspace: {
+            memberships: {
+              some: {
+                userId,
+                role: { in: ["OWNER", "ADMIN"] },
+              },
+            },
+          },
+        },
+      },
+      select: {
+        type: true,
+      },
+    });
+
+    expect(prisma.workflowStep.updateMany).not.toHaveBeenCalled();
   });
 
   it("deletes a step and rebuilds contiguous positions", async () => {

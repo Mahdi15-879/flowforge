@@ -9,3 +9,4 @@ export * from "./auth";
 export * from "./workspace";
 export * from "./workflow";
 export * from "./workflow-step";
+export * from "./step-configuration";

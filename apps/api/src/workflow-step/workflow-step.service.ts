@@ -13,6 +13,7 @@ import {
 } from "@flowforge/contracts";
 import { PrismaService } from "../prisma/prisma.service";
 import { WorkspaceAccessService } from "../workspace/workspace-access.service";
+import { validateStepConfig } from "./step-config.validator";
 
 @Injectable()
 export class WorkflowStepService {
@@ -112,13 +113,18 @@ export class WorkflowStepService {
           throw new BadRequestException(`New step position must be ${count}`);
         }
 
+        const validatedConfig = validateStepConfig(
+          input.type,
+          input.config ?? {},
+        );
+
         const step = await tx.workflowStep.create({
           data: {
             workflowId,
             name: input.name,
             type: input.type,
             position: input.position,
-            config: (input.config ?? {}) as Prisma.InputJsonObject,
+            config: validatedConfig as Prisma.InputJsonObject,
           },
         });
 
@@ -191,7 +197,37 @@ export class WorkflowStepService {
     }
 
     if (input.config !== undefined) {
-      data.config = input.config as Prisma.InputJsonObject;
+      const existingStep = await this.prisma.workflowStep.findFirst({
+        where: {
+          id: stepId,
+          workflowId,
+          workflow: {
+            workspaceId,
+            workspace: {
+              memberships: {
+                some: {
+                  userId,
+                  role: { in: ["OWNER", "ADMIN"] },
+                },
+              },
+            },
+          },
+        },
+        select: {
+          type: true,
+        },
+      });
+
+      if (!existingStep) {
+        throw new NotFoundException("Workflow step not found");
+      }
+
+      const validatedConfig = validateStepConfig(
+        existingStep.type,
+        input.config,
+      );
+
+      data.config = validatedConfig as Prisma.InputJsonObject;
     }
 
     const result = await this.prisma.workflowStep.updateMany({
