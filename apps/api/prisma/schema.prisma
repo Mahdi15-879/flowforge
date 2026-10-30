@@ -64,6 +64,7 @@ model Workflow {
 
   workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   steps     WorkflowStep[]
+  runs WorkflowRun[]
 
   @@index([workspaceId])
 }
@@ -79,7 +80,59 @@ model WorkflowStep {
   updatedAt  DateTime         @updatedAt
 
   workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  stepRuns StepRun[]
 
   @@unique([workflowId, position])
   @@index([workflowId])
+}
+
+
+enum WorkflowRunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum StepRunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+model WorkflowRun {
+  id          String            @id @default(uuid())
+  workflowId  String
+  status      WorkflowRunStatus @default(PENDING)
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime          @default(now())
+
+  workflow Workflow  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  stepRuns StepRun[]
+
+  @@index([workflowId, createdAt])
+}
+
+model StepRun {
+  id            String        @id @default(uuid())
+  workflowRunId String
+  stepId        String?
+  stepName      String
+  stepType      WorkflowStepType
+  position      Int
+  config        Json
+  status        StepRunStatus @default(PENDING)
+  output        Json?
+  error         String?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  createdAt     DateTime      @default(now())
+
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  step        WorkflowStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
+
+  @@unique([workflowRunId, position])
+  @@index([stepId])
 }
