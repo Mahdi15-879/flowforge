@@ -6,6 +6,7 @@ import { PrismaModule } from "./prisma/prisma.module";
 import { AuthModule } from "./auth/auth.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
 import { WorkflowModule } from "./workflow/workflow.module";
+import { WorkflowStepModule } from "./workflow-step/workflow-step.module";
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { WorkflowModule } from "./workflow/workflow.module";
     AuthModule,
     WorkspaceModule,
     WorkflowModule,
+    WorkflowStepModule,
   ],
   controllers: [HealthController],
   providers: [HealthService],
