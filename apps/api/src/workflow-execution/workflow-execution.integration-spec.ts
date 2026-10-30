@@ -4,12 +4,14 @@ import { WorkflowExecutionService } from "./workflow-execution.service";
 import { WorkspaceAccessService } from "../workspace/workspace-access.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { assertIntegrationDatabase } from "./integration-db.guard";
+import { WorkflowRunnerService } from "./workflow-runner.service";
 
 describe("WorkflowExecutionService — PostgreSQL integration", () => {
   const prisma = new PrismaService();
 
   const workspaceAccess = new WorkspaceAccessService(prisma);
   const service = new WorkflowExecutionService(prisma, workspaceAccess);
+  const runner = new WorkflowRunnerService(prisma);
 
   let userId: string;
   let workspaceId: string;
@@ -354,5 +356,259 @@ describe("WorkflowExecutionService — PostgreSQL integration", () => {
 
     expect(persistedRun?.workflowId).toBe(workflow.id);
     expect(persistedRun?.status).toBe("PENDING");
+  });
+
+  it("atomically starts a pending run and rejects a second start", async () => {
+    const suffix = randomUUID();
+
+    const user = await prisma.user.create({
+      data: {
+        email: `runner-${suffix}@example.test`,
+      },
+    });
+    userId = user.id;
+
+    const workspace = await prisma.workspace.create({
+      data: {
+        name: "Runner Integration Test",
+        slug: `runner-test-${suffix}`,
+        memberships: {
+          create: {
+            userId,
+            role: "OWNER",
+          },
+        },
+      },
+    });
+    workspaceId = workspace.id;
+
+    const workflow = await prisma.workflow.create({
+      data: {
+        name: "Runner Test Workflow",
+        workspaceId,
+        steps: {
+          create: {
+            name: "Start",
+            type: "TRIGGER",
+            position: 0,
+            config: {},
+          },
+        },
+      },
+    });
+
+    const run = await service.startRun(userId, workspaceId, workflow.id);
+
+    expect(run.status).toBe("PENDING");
+
+    const startedRun = await runner.markRunAsRunning(run.id);
+
+    expect(startedRun.status).toBe("RUNNING");
+    expect(startedRun.startedAt).toBeInstanceOf(Date);
+
+    const persistedRun = await prisma.workflowRun.findUniqueOrThrow({
+      where: { id: run.id },
+    });
+
+    expect(persistedRun.status).toBe("RUNNING");
+    expect(persistedRun.startedAt).not.toBeNull();
+
+    await expect(runner.markRunAsRunning(run.id)).rejects.toMatchObject({
+      status: 409,
+    });
+  });
+
+  it("allows only one concurrent start for the same run", async () => {
+    const suffix = randomUUID();
+
+    const user = await prisma.user.create({
+      data: {
+        email: `concurrent-${suffix}@example.test`,
+      },
+    });
+    userId = user.id;
+
+    const workspace = await prisma.workspace.create({
+      data: {
+        name: "Concurrency Test",
+        slug: `concurrency-${suffix}`,
+        memberships: {
+          create: {
+            userId,
+            role: "OWNER",
+          },
+        },
+      },
+    });
+    workspaceId = workspace.id;
+
+    const workflow = await prisma.workflow.create({
+      data: {
+        name: "Concurrent Workflow",
+        workspaceId,
+        steps: {
+          create: {
+            name: "Start",
+            type: "TRIGGER",
+            position: 0,
+            config: {},
+          },
+        },
+      },
+    });
+
+    const run = await service.startRun(userId, workspaceId, workflow.id);
+
+    const results = await Promise.allSettled([
+      runner.markRunAsRunning(run.id),
+      runner.markRunAsRunning(run.id),
+    ]);
+
+    const succeeded = results.filter((result) => result.status === "fulfilled");
+
+    const rejected = results.filter((result) => result.status === "rejected");
+
+    expect(succeeded).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    expect(rejected[0]).toMatchObject({
+      status: "rejected",
+      reason: {
+        status: 409,
+      },
+    });
+
+    const persistedRun = await prisma.workflowRun.findUniqueOrThrow({
+      where: { id: run.id },
+    });
+
+    expect(persistedRun.status).toBe("RUNNING");
+    expect(persistedRun.startedAt).not.toBeNull();
+  });
+
+  it("persists successful run completion", async () => {
+    const suffix = randomUUID();
+
+    const user = await prisma.user.create({
+      data: {
+        email: `completion-${suffix}@example.test`,
+      },
+    });
+    userId = user.id;
+
+    const workspace = await prisma.workspace.create({
+      data: {
+        name: "Completion Integration Test",
+        slug: `completion-${suffix}`,
+        memberships: {
+          create: {
+            userId,
+            role: "OWNER",
+          },
+        },
+      },
+    });
+    workspaceId = workspace.id;
+
+    const workflow = await prisma.workflow.create({
+      data: {
+        name: "Completion Test Workflow",
+        workspaceId,
+        steps: {
+          create: {
+            name: "Start",
+            type: "TRIGGER",
+            position: 0,
+            config: {},
+          },
+        },
+      },
+    });
+
+    const run = await service.startRun(userId, workspaceId, workflow.id);
+
+    await runner.markRunAsRunning(run.id);
+
+    const completedRun = await runner.markRunAsSucceeded(run.id);
+
+    expect(completedRun.status).toBe("SUCCEEDED");
+    expect(completedRun.finishedAt).toBeInstanceOf(Date);
+
+    const persistedRun = await prisma.workflowRun.findUniqueOrThrow({
+      where: { id: run.id },
+    });
+
+    expect(persistedRun.status).toBe("SUCCEEDED");
+    expect(persistedRun.startedAt).not.toBeNull();
+    expect(persistedRun.finishedAt).not.toBeNull();
+
+    await expect(runner.markRunAsSucceeded(run.id)).rejects.toMatchObject({
+      status: 409,
+    });
+  });
+
+  it("persists failed run completion", async () => {
+    const suffix = randomUUID();
+
+    const user = await prisma.user.create({
+      data: {
+        email: `failure-${suffix}@example.test`,
+      },
+    });
+    userId = user.id;
+
+    const workspace = await prisma.workspace.create({
+      data: {
+        name: "Failure Integration Test",
+        slug: `failure-${suffix}`,
+        memberships: {
+          create: {
+            userId,
+            role: "OWNER",
+          },
+        },
+      },
+    });
+    workspaceId = workspace.id;
+
+    const workflow = await prisma.workflow.create({
+      data: {
+        name: "Failure Test Workflow",
+        workspaceId,
+        steps: {
+          create: {
+            name: "Start",
+            type: "TRIGGER",
+            position: 0,
+            config: {},
+          },
+        },
+      },
+    });
+
+    const run = await service.startRun(userId, workspaceId, workflow.id);
+
+    await runner.markRunAsRunning(run.id);
+
+    const failedRun = await runner.markRunAsFailed(run.id);
+
+    expect(failedRun.status).toBe("FAILED");
+    expect(failedRun.finishedAt).toBeInstanceOf(Date);
+
+    const persistedRun = await prisma.workflowRun.findUniqueOrThrow({
+      where: { id: run.id },
+    });
+
+    expect(persistedRun.status).toBe("FAILED");
+    expect(persistedRun.startedAt).not.toBeNull();
+    expect(persistedRun.finishedAt).not.toBeNull();
+
+    await expect(runner.markRunAsFailed(run.id)).rejects.toMatchObject({
+      status: 409,
+    });
+
+    await expect(runner.markRunAsSucceeded(run.id)).rejects.toMatchObject({
+      status: 409,
+    });
   });
 });
