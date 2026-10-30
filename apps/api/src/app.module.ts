@@ -4,6 +4,7 @@ import { HealthController } from "./health.controller";
 import { HealthService } from "./health.service";
 import { PrismaModule } from "./prisma/prisma.module";
 import { AuthModule } from "./auth/auth.module";
+import { WorkspaceModule } from "./workspace/workspace.module";
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { AuthModule } from "./auth/auth.module";
     }),
     PrismaModule,
     AuthModule,
+    WorkspaceModule,
   ],
   controllers: [HealthController],
   providers: [HealthService],
