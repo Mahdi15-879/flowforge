@@ -1,59 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "../components/Sidebar";
 import { WorkflowBuilder } from "../components/WorkflowBuilder";
 import { RunHistory } from "../components/RunHistory";
 import { StatCard } from "../components/StatCard";
 import { ApiHealthIndicator } from "../components/ApiHealthIndicator";
-
-type Workspace = {
-  id: string;
-  name: string;
-  slug?: string;
-  role?: string;
-  membership?: { role?: string };
-  workspace?: { id: string; name: string; slug?: string };
-};
-
-type Workflow = {
-  id: string;
-  name: string;
-  description?: string | null;
-};
-
-type Step = {
-  id: string;
-  name: string;
-  type: "TRIGGER" | "ACTION";
-  position: number;
-  config?: Record<string, unknown>;
-};
-
-type Run = {
-  id: string;
-  status: string;
-  createdAt?: string;
-  startedAt?: string | null;
-  finishedAt?: string | null;
-  stepRuns?: Array<{
-    id: string;
-    stepName: string;
-    status: string;
-    output?: unknown;
-    error?: unknown;
-  }>;
-};
-
-const BASE = "/backend";
-const SESSION_EXPIRED = "SESSION_EXPIRED";
+import { apiRequest, SESSION_EXPIRED } from "../lib/api-client";
+import { useAuth } from "../hooks/useAuth";
+import type { Workspace, Workflow, Step, Run } from "../types/workflow";
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
 export default function Home() {
-  const [token, setToken] = useState("");
+  const {
+    token,
+    activeTokenRef,
+    authenticate: authenticateUser,
+    clearAuth,
+  } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -79,81 +46,34 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
-  const activeTokenRef = useRef(token);
-  activeTokenRef.current = token;
-
-  const clearSession = useCallback((expired = false) => {
-    sessionStorage.removeItem("flowforge_token");
-    activeTokenRef.current = "";
-    setToken("");
-    setMode("login");
-    setWorkspaces([]);
-    setWorkspaceId("");
-    setWorkflows([]);
-    setWorkflowId("");
-    setSteps([]);
-    setRuns([]);
-    setSelectedRun(null);
-    setNotice("");
-    setError(expired ? "Your session has expired. Please sign in again." : "");
-  }, []);
+  const clearSession = useCallback(
+    (expired = false) => {
+      clearAuth();
+      setMode("login");
+      setWorkspaces([]);
+      setWorkspaceId("");
+      setWorkflows([]);
+      setWorkflowId("");
+      setSteps([]);
+      setRuns([]);
+      setSelectedRun(null);
+      setNotice("");
+      setError(
+        expired ? "Your session has expired. Please sign in again." : "",
+      );
+    },
+    [clearAuth],
+  );
 
   const request = useCallback(
     async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
       const requestToken = token;
-      const isAuthRequest = path.startsWith("/auth/");
-      const response = await fetch(`${BASE}${path}`, {
-        ...options,
-        headers: {
-          ...(options.body ? { "Content-Type": "application/json" } : {}),
-          ...(requestToken && !isAuthRequest
-            ? { Authorization: `Bearer ${requestToken}` }
-            : {}),
-          ...options.headers,
-        },
-        cache: "no-store",
+
+      return apiRequest<T>(path, options, {
+        token: requestToken,
+        onUnauthorized: () => clearSession(true),
+        isSessionCurrent: () => activeTokenRef.current === requestToken,
       });
-
-      if (!isAuthRequest && requestToken) {
-        if (activeTokenRef.current !== requestToken) {
-          throw new Error(SESSION_EXPIRED);
-        }
-        if (response.status === 401) {
-          clearSession(true);
-          throw new Error(SESSION_EXPIRED);
-        }
-      }
-
-      const text = await response.text();
-      let data: unknown = null;
-
-      if (
-        !isAuthRequest &&
-        requestToken &&
-        activeTokenRef.current !== requestToken
-      ) {
-        throw new Error(SESSION_EXPIRED);
-      }
-
-      if (text) {
-        try {
-          data = JSON.parse(text);
-        } catch {
-          throw new Error(`Invalid API response (${response.status})`);
-        }
-      }
-
-      if (!response.ok) {
-        const body = data as { message?: string | string[] } | null;
-        const detail = body?.message;
-        throw new Error(
-          Array.isArray(detail)
-            ? detail.join(", ")
-            : detail || `Request failed (${response.status})`,
-        );
-      }
-
-      return data as T;
     },
     [token, clearSession],
   );
@@ -208,11 +128,6 @@ export default function Home() {
   }, [request, workspaceId, workflowId]);
 
   useEffect(() => {
-    const saved = sessionStorage.getItem("flowforge_token");
-    if (saved) setToken(saved);
-  }, []);
-
-  useEffect(() => {
     if (!token) return;
     loadWorkspaces().catch(handleLoadError);
   }, [token, loadWorkspaces]);
@@ -252,22 +167,11 @@ export default function Home() {
 
   async function authenticate() {
     await perform(async () => {
-      const payload =
-        mode === "register"
-          ? { email, password, ...(name.trim() ? { name } : {}) }
-          : { email, password };
-
-      const result = await request<{
-        accessToken?: string;
-        access_token?: string;
-        token?: string;
-      }>(`/auth/${mode}`, {
-        method: "POST",
-        body: JSON.stringify(payload),
+      const accessToken = await authenticateUser(mode, {
+        email,
+        password,
+        name,
       });
-
-      const accessToken =
-        result.accessToken ?? result.access_token ?? result.token;
 
       if (!accessToken) {
         if (mode === "register") {
@@ -275,12 +179,10 @@ export default function Home() {
           setNotice("Account created. Please sign in.");
           return;
         }
+
         throw new Error("Login succeeded but no access token was returned.");
       }
 
-      sessionStorage.setItem("flowforge_token", accessToken);
-      activeTokenRef.current = accessToken;
-      setToken(accessToken);
       setNotice("Signed in successfully.");
     });
   }
