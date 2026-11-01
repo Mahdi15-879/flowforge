@@ -7,6 +7,7 @@ import { AuthModule } from "./auth/auth.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
 import { WorkflowModule } from "./workflow/workflow.module";
 import { WorkflowStepModule } from "./workflow-step/workflow-step.module";
+import { WorkflowExecutionModule } from "./workflow-execution/workflow-execution.module";
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { WorkflowStepModule } from "./workflow-step/workflow-step.module";
     WorkspaceModule,
     WorkflowModule,
     WorkflowStepModule,
+    WorkflowExecutionModule,
   ],
   controllers: [HealthController],
   providers: [HealthService],
