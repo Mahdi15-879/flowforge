@@ -1,17 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "../components/Sidebar";
 import { WorkflowBuilder } from "../components/WorkflowBuilder";
 import { RunHistory } from "../components/RunHistory";
 import { StatCard } from "../components/StatCard";
 import { ApiHealthIndicator } from "../components/ApiHealthIndicator";
 import { apiRequest, SESSION_EXPIRED } from "../lib/api-client";
-import {
-  getSessionToken,
-  saveSessionToken,
-  removeSessionToken,
-} from "../lib/session";
+import { useAuth } from "../hooks/useAuth";
 import type { Workspace, Workflow, Step, Run } from "../types/workflow";
 
 function messageOf(error: unknown): string {
@@ -19,7 +15,12 @@ function messageOf(error: unknown): string {
 }
 
 export default function Home() {
-  const [token, setToken] = useState("");
+  const {
+    token,
+    activeTokenRef,
+    authenticate: authenticateUser,
+    clearAuth,
+  } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -45,24 +46,24 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
-  const activeTokenRef = useRef(token);
-  activeTokenRef.current = token;
-
-  const clearSession = useCallback((expired = false) => {
-    removeSessionToken();
-    activeTokenRef.current = "";
-    setToken("");
-    setMode("login");
-    setWorkspaces([]);
-    setWorkspaceId("");
-    setWorkflows([]);
-    setWorkflowId("");
-    setSteps([]);
-    setRuns([]);
-    setSelectedRun(null);
-    setNotice("");
-    setError(expired ? "Your session has expired. Please sign in again." : "");
-  }, []);
+  const clearSession = useCallback(
+    (expired = false) => {
+      clearAuth();
+      setMode("login");
+      setWorkspaces([]);
+      setWorkspaceId("");
+      setWorkflows([]);
+      setWorkflowId("");
+      setSteps([]);
+      setRuns([]);
+      setSelectedRun(null);
+      setNotice("");
+      setError(
+        expired ? "Your session has expired. Please sign in again." : "",
+      );
+    },
+    [clearAuth],
+  );
 
   const request = useCallback(
     async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
@@ -127,11 +128,6 @@ export default function Home() {
   }, [request, workspaceId, workflowId]);
 
   useEffect(() => {
-    const saved = getSessionToken();
-    if (saved) setToken(saved);
-  }, []);
-
-  useEffect(() => {
     if (!token) return;
     loadWorkspaces().catch(handleLoadError);
   }, [token, loadWorkspaces]);
@@ -171,22 +167,11 @@ export default function Home() {
 
   async function authenticate() {
     await perform(async () => {
-      const payload =
-        mode === "register"
-          ? { email, password, ...(name.trim() ? { name } : {}) }
-          : { email, password };
-
-      const result = await request<{
-        accessToken?: string;
-        access_token?: string;
-        token?: string;
-      }>(`/auth/${mode}`, {
-        method: "POST",
-        body: JSON.stringify(payload),
+      const accessToken = await authenticateUser(mode, {
+        email,
+        password,
+        name,
       });
-
-      const accessToken =
-        result.accessToken ?? result.access_token ?? result.token;
 
       if (!accessToken) {
         if (mode === "register") {
@@ -194,12 +179,10 @@ export default function Home() {
           setNotice("Account created. Please sign in.");
           return;
         }
+
         throw new Error("Login succeeded but no access token was returned.");
       }
 
-      saveSessionToken(accessToken);
-      activeTokenRef.current = accessToken;
-      setToken(accessToken);
       setNotice("Signed in successfully.");
     });
   }
