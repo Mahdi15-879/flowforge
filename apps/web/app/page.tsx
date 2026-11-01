@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Sidebar } from "../components/Sidebar";
 import { WorkflowBuilder } from "../components/WorkflowBuilder";
 import { RunHistory } from "../components/RunHistory";
@@ -8,7 +8,10 @@ import { StatCard } from "../components/StatCard";
 import { ApiHealthIndicator } from "../components/ApiHealthIndicator";
 import { apiRequest, SESSION_EXPIRED } from "../lib/api-client";
 import { useAuth } from "../hooks/useAuth";
-import type { Workspace, Workflow, Step, Run } from "../types/workflow";
+import { useWorkspaces } from "../hooks/useWorkspaces";
+import { useWorkflows } from "../hooks/useWorkflows";
+import { useWorkflowDetails } from "../hooks/useWorkflowDetails";
+import type { Run } from "../types/workflow";
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -25,13 +28,6 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [workspaceId, setWorkspaceId] = useState("");
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
-  const [workflowId, setWorkflowId] = useState("");
-  const [steps, setSteps] = useState<Step[]>([]);
-  const [runs, setRuns] = useState<Run[]>([]);
-  const [selectedRun, setSelectedRun] = useState<Run | null>(null);
   const [workspaceName, setWorkspaceName] = useState("");
   const [workflowName, setWorkflowName] = useState("");
   const [workflowDescription, setWorkflowDescription] = useState("");
@@ -45,18 +41,19 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const resetWorkspacesRef = useRef<() => void>(() => {});
+  const resetWorkflowsRef = useRef<() => void>(() => {});
+  const resetWorkflowDetailsRef = useRef<() => void>(() => {});
 
   const clearSession = useCallback(
     (expired = false) => {
       clearAuth();
+
+      resetWorkspacesRef.current();
+      resetWorkflowsRef.current();
+      resetWorkflowDetailsRef.current();
+
       setMode("login");
-      setWorkspaces([]);
-      setWorkspaceId("");
-      setWorkflows([]);
-      setWorkflowId("");
-      setSteps([]);
-      setRuns([]);
-      setSelectedRun(null);
       setNotice("");
       setError(
         expired ? "Your session has expired. Please sign in again." : "",
@@ -78,54 +75,53 @@ export default function Home() {
     [token, clearSession],
   );
 
+  const {
+    workspaces,
+    workspaceId,
+    setWorkspaceId,
+    loadWorkspaces,
+    resetWorkspaces,
+  } = useWorkspaces({
+    request,
+    activeTokenRef,
+  });
+
+  const {
+    workflows,
+    workflowId,
+    setWorkflowId,
+    loadedWorkspaceId,
+    loadWorkflows,
+    resetWorkflows,
+  } = useWorkflows({
+    request,
+    activeTokenRef,
+    workspaceId,
+  });
+
+  const {
+    steps,
+    runs,
+    selectedRun,
+    loadWorkflowDetails,
+    loadRunDetails,
+    resetWorkflowDetails,
+  } = useWorkflowDetails({
+    request,
+    activeTokenRef,
+    workspaceId,
+    workflowId,
+  });
+
+  resetWorkspacesRef.current = resetWorkspaces;
+  resetWorkflowsRef.current = resetWorkflows;
+  resetWorkflowDetailsRef.current = resetWorkflowDetails;
+
   function handleLoadError(err: unknown) {
     if (err instanceof Error && err.message === SESSION_EXPIRED) return;
     if (!activeTokenRef.current) return;
     setError(messageOf(err));
   }
-
-  const loadWorkspaces = useCallback(async () => {
-    const sessionToken = activeTokenRef.current;
-    const data = await request<Workspace[]>("/workspaces");
-    if (activeTokenRef.current !== sessionToken) return;
-    const normalized = data.map((item) =>
-      item.workspace
-        ? { ...item.workspace, role: item.role ?? item.membership?.role }
-        : item,
-    );
-    setWorkspaces(normalized);
-    setWorkspaceId((current) =>
-      normalized.some((item) => item.id === current)
-        ? current
-        : (normalized[0]?.id ?? ""),
-    );
-  }, [request]);
-
-  const loadWorkflows = useCallback(async () => {
-    if (!workspaceId) return;
-    const sessionToken = activeTokenRef.current;
-    const data = await request<Workflow[]>(
-      `/workspaces/${workspaceId}/workflows`,
-    );
-    if (activeTokenRef.current !== sessionToken) return;
-    setWorkflows(data);
-    setWorkflowId((current) =>
-      data.some((item) => item.id === current) ? current : (data[0]?.id ?? ""),
-    );
-  }, [request, workspaceId]);
-
-  const loadWorkflowDetails = useCallback(async () => {
-    if (!workspaceId || !workflowId) return;
-    const sessionToken = activeTokenRef.current;
-    const root = `/workspaces/${workspaceId}/workflows/${workflowId}`;
-    const [stepData, runData] = await Promise.all([
-      request<Step[]>(`${root}/steps`),
-      request<Run[]>(`${root}/runs`),
-    ]);
-    if (activeTokenRef.current !== sessionToken) return;
-    setSteps(stepData);
-    setRuns(runData);
-  }, [request, workspaceId, workflowId]);
 
   useEffect(() => {
     if (!token) return;
@@ -133,22 +129,35 @@ export default function Home() {
   }, [token, loadWorkspaces]);
 
   useEffect(() => {
-    setWorkflows([]);
-    setWorkflowId("");
-    setSteps([]);
-    setRuns([]);
-    setSelectedRun(null);
+    resetWorkflows();
+    resetWorkflowDetails();
+
     if (!workspaceId) return;
+
     loadWorkflows().catch(handleLoadError);
-  }, [workspaceId, loadWorkflows]);
+  }, [workspaceId, loadWorkflows, resetWorkflows, resetWorkflowDetails]);
 
   useEffect(() => {
-    setSteps([]);
-    setRuns([]);
-    setSelectedRun(null);
-    if (!workflowId) return;
+    resetWorkflowDetails();
+
+    if (!workspaceId || !workflowId || loadedWorkspaceId !== workspaceId) {
+      return;
+    }
+    const workflowBelongsToWorkspace = workflows.some(
+      (workflow) => workflow.id === workflowId,
+    );
+
+    if (!workflowBelongsToWorkspace) return;
+
     loadWorkflowDetails().catch(handleLoadError);
-  }, [workflowId, loadWorkflowDetails]);
+  }, [
+    workspaceId,
+    workflowId,
+    workflows,
+    loadedWorkspaceId,
+    loadWorkflowDetails,
+    resetWorkflowDetails,
+  ]);
 
   async function perform(action: () => Promise<void>) {
     setBusy(true);
@@ -286,18 +295,10 @@ export default function Home() {
   }
 
   async function viewRun(runId: string) {
-    if (selectedRun?.id === runId) {
-      setSelectedRun(null);
-      return;
-    }
-
     if (!workspaceId || !workflowId) return;
 
     await perform(async () => {
-      const data = await request<Run>(
-        `/workspaces/${workspaceId}/workflows/${workflowId}/runs/${runId}`,
-      );
-      setSelectedRun(data);
+      await loadRunDetails(runId);
     });
   }
 
