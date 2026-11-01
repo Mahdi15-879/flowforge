@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Sidebar } from "../components/Sidebar";
 import { WorkflowBuilder } from "../components/WorkflowBuilder";
 import { RunHistory } from "../components/RunHistory";
 import { StatCard } from "../components/StatCard";
+import { ApiHealthIndicator } from "../components/ApiHealthIndicator";
 
 type Workspace = {
   id: string;
@@ -45,6 +46,7 @@ type Run = {
 };
 
 const BASE = "/backend";
+const SESSION_EXPIRED = "SESSION_EXPIRED";
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -77,20 +79,61 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
+  const activeTokenRef = useRef(token);
+  activeTokenRef.current = token;
+
+  const clearSession = useCallback((expired = false) => {
+    sessionStorage.removeItem("flowforge_token");
+    activeTokenRef.current = "";
+    setToken("");
+    setMode("login");
+    setWorkspaces([]);
+    setWorkspaceId("");
+    setWorkflows([]);
+    setWorkflowId("");
+    setSteps([]);
+    setRuns([]);
+    setSelectedRun(null);
+    setNotice("");
+    setError(expired ? "Your session has expired. Please sign in again." : "");
+  }, []);
+
   const request = useCallback(
     async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
+      const requestToken = token;
+      const isAuthRequest = path.startsWith("/auth/");
       const response = await fetch(`${BASE}${path}`, {
         ...options,
         headers: {
           ...(options.body ? { "Content-Type": "application/json" } : {}),
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(requestToken && !isAuthRequest
+            ? { Authorization: `Bearer ${requestToken}` }
+            : {}),
           ...options.headers,
         },
         cache: "no-store",
       });
 
+      if (!isAuthRequest && requestToken) {
+        if (activeTokenRef.current !== requestToken) {
+          throw new Error(SESSION_EXPIRED);
+        }
+        if (response.status === 401) {
+          clearSession(true);
+          throw new Error(SESSION_EXPIRED);
+        }
+      }
+
       const text = await response.text();
       let data: unknown = null;
+
+      if (
+        !isAuthRequest &&
+        requestToken &&
+        activeTokenRef.current !== requestToken
+      ) {
+        throw new Error(SESSION_EXPIRED);
+      }
 
       if (text) {
         try {
@@ -112,11 +155,19 @@ export default function Home() {
 
       return data as T;
     },
-    [token],
+    [token, clearSession],
   );
 
+  function handleLoadError(err: unknown) {
+    if (err instanceof Error && err.message === SESSION_EXPIRED) return;
+    if (!activeTokenRef.current) return;
+    setError(messageOf(err));
+  }
+
   const loadWorkspaces = useCallback(async () => {
+    const sessionToken = activeTokenRef.current;
     const data = await request<Workspace[]>("/workspaces");
+    if (activeTokenRef.current !== sessionToken) return;
     const normalized = data.map((item) =>
       item.workspace
         ? { ...item.workspace, role: item.role ?? item.membership?.role }
@@ -132,9 +183,11 @@ export default function Home() {
 
   const loadWorkflows = useCallback(async () => {
     if (!workspaceId) return;
+    const sessionToken = activeTokenRef.current;
     const data = await request<Workflow[]>(
       `/workspaces/${workspaceId}/workflows`,
     );
+    if (activeTokenRef.current !== sessionToken) return;
     setWorkflows(data);
     setWorkflowId((current) =>
       data.some((item) => item.id === current) ? current : (data[0]?.id ?? ""),
@@ -143,11 +196,13 @@ export default function Home() {
 
   const loadWorkflowDetails = useCallback(async () => {
     if (!workspaceId || !workflowId) return;
+    const sessionToken = activeTokenRef.current;
     const root = `/workspaces/${workspaceId}/workflows/${workflowId}`;
     const [stepData, runData] = await Promise.all([
       request<Step[]>(`${root}/steps`),
       request<Run[]>(`${root}/runs`),
     ]);
+    if (activeTokenRef.current !== sessionToken) return;
     setSteps(stepData);
     setRuns(runData);
   }, [request, workspaceId, workflowId]);
@@ -159,7 +214,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!token) return;
-    loadWorkspaces().catch((err: unknown) => setError(messageOf(err)));
+    loadWorkspaces().catch(handleLoadError);
   }, [token, loadWorkspaces]);
 
   useEffect(() => {
@@ -169,7 +224,7 @@ export default function Home() {
     setRuns([]);
     setSelectedRun(null);
     if (!workspaceId) return;
-    loadWorkflows().catch((err: unknown) => setError(messageOf(err)));
+    loadWorkflows().catch(handleLoadError);
   }, [workspaceId, loadWorkflows]);
 
   useEffect(() => {
@@ -177,7 +232,7 @@ export default function Home() {
     setRuns([]);
     setSelectedRun(null);
     if (!workflowId) return;
-    loadWorkflowDetails().catch((err: unknown) => setError(messageOf(err)));
+    loadWorkflowDetails().catch(handleLoadError);
   }, [workflowId, loadWorkflowDetails]);
 
   async function perform(action: () => Promise<void>) {
@@ -187,7 +242,9 @@ export default function Home() {
     try {
       await action();
     } catch (err) {
-      setError(messageOf(err));
+      if (!(err instanceof Error && err.message === SESSION_EXPIRED)) {
+        setError(messageOf(err));
+      }
     } finally {
       setBusy(false);
     }
@@ -222,23 +279,14 @@ export default function Home() {
       }
 
       sessionStorage.setItem("flowforge_token", accessToken);
+      activeTokenRef.current = accessToken;
       setToken(accessToken);
       setNotice("Signed in successfully.");
     });
   }
 
   function logout() {
-    sessionStorage.removeItem("flowforge_token");
-    setToken("");
-    setWorkspaces([]);
-    setWorkspaceId("");
-    setWorkflows([]);
-    setWorkflowId("");
-    setSteps([]);
-    setRuns([]);
-    setSelectedRun(null);
-    setNotice("");
-    setError("");
+    clearSession();
   }
 
   async function createWorkspace() {
@@ -502,10 +550,7 @@ export default function Home() {
               </p>
             </div>
 
-            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-xs font-medium text-emerald-300">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              API connected
-            </span>
+            <ApiHealthIndicator />
           </header>
 
           {error && (
