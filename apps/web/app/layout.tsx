@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import "./style.css";
 import "./tailwind.css";
 export const metadata = {
   title: "FlowForge | Workspace",

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "../components/Sidebar";
 import { WorkflowBuilder } from "../components/WorkflowBuilder";
 import { RunHistory } from "../components/RunHistory";
+import { StatCard } from "../components/StatCard";
 
 type Workspace = {
   id: string;
@@ -47,10 +48,6 @@ const BASE = "/backend";
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function formatDate(value?: string | null): string {
-  return value ? new Date(value).toLocaleString() : "—";
 }
 
 export default function Home() {
@@ -359,50 +356,84 @@ export default function Home() {
 
   if (!token) {
     return (
-      <main className="auth-screen">
-        <section className="auth-card">
-          <div className="brand">◆ FlowForge</div>
-          <div className="eyebrow">WORKFLOW AUTOMATION PLATFORM</div>
-          <h1>{mode === "login" ? "Welcome back" : "Create your account"}</h1>
-          <p>Build, execute, and monitor workflows from one workspace.</p>
+      <main className="flex min-h-dvh items-center justify-center bg-[#0b1020] px-4 py-10 text-slate-100">
+        <section className="w-full max-w-md rounded-3xl border border-slate-700/70 bg-[#172238] p-7 shadow-2xl shadow-black/30 sm:p-9">
+          <div className="mb-8">
+            <div className="mb-5 flex items-center gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 text-xl font-bold text-white">
+                ◆
+              </span>
+              <span className="text-xl font-extrabold tracking-tight text-white">
+                FlowForge
+              </span>
+            </div>
+
+            <p className="mb-3 text-[11px] font-bold tracking-[0.18em] text-indigo-400">
+              WORKFLOW AUTOMATION PLATFORM
+            </p>
+
+            <h1 className="text-3xl font-bold tracking-tight text-white">
+              {mode === "login" ? "Welcome back" : "Create your account"}
+            </h1>
+
+            <p className="mt-3 text-sm leading-6 text-slate-400">
+              Build, execute, and monitor workflows from one workspace.
+            </p>
+          </div>
+
           <form
+            className="flex flex-col gap-5"
             onSubmit={(event) => {
               event.preventDefault();
               void authenticate();
             }}
           >
             {mode === "register" && (
-              <label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-200">
                 Name
                 <input
+                  className="min-h-12 w-full rounded-xl border border-slate-600/70 bg-[#0e172a] px-4 text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                   placeholder="Your name"
                 />
               </label>
             )}
-            <label>
+
+            <label className="flex flex-col gap-2 text-sm font-medium text-slate-200">
               Email
               <input
+                className="min-h-12 w-full rounded-xl border border-slate-600/70 bg-[#0e172a] px-4 text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
                 type="email"
                 required
+                autoComplete="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="you@example.com"
               />
             </label>
-            <label>
+
+            <label className="flex flex-col gap-2 text-sm font-medium text-slate-200">
               Password
               <input
+                className="min-h-12 w-full rounded-xl border border-slate-600/70 bg-[#0e172a] px-4 text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
                 type="password"
                 required
                 minLength={mode === "register" ? 12 : undefined}
+                autoComplete={
+                  mode === "login" ? "current-password" : "new-password"
+                }
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="Your password"
               />
             </label>
-            <button disabled={busy} type="submit">
+
+            <button
+              disabled={busy}
+              type="submit"
+              className="mt-2 min-h-12 rounded-xl bg-indigo-500 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+            >
               {busy
                 ? "Please wait..."
                 : mode === "login"
@@ -410,170 +441,261 @@ export default function Home() {
                   : "Create account"}
             </button>
           </form>
+
           <button
-            className="text-button"
+            type="button"
+            className="mt-6 w-full rounded-lg py-2 text-center text-sm font-medium text-indigo-300 transition-colors hover:text-indigo-200 focus-visible:outline-2 focus-visible:outline-indigo-300"
             onClick={() => setMode(mode === "login" ? "register" : "login")}
           >
             {mode === "login"
               ? "Need an account? Register"
               : "Already registered? Sign in"}
           </button>
-          {error && <p className="alert error">{error}</p>}
-          {notice && <p className="alert success">{notice}</p>}
+
+          {error && (
+            <p
+              role="alert"
+              className="mt-5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200"
+            >
+              {error}
+            </p>
+          )}
+
+          {notice && (
+            <p
+              role="status"
+              className="mt-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200"
+            >
+              {notice}
+            </p>
+          )}
         </section>
       </main>
     );
   }
 
+  const panelClass =
+    "rounded-2xl border border-slate-700/70 bg-[#172238] p-5 shadow-lg shadow-black/10 md:p-7";
+
+  const inputClass =
+    "min-h-12 w-full min-w-0 rounded-xl border border-slate-600/70 bg-[#0e172a] px-4 py-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20";
+
+  const buttonClass =
+    "inline-flex min-h-12 items-center justify-center rounded-xl bg-indigo-500 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300 disabled:cursor-not-allowed disabled:opacity-50";
+
   return (
-    <main className="shell">
+    <main className="min-h-dvh bg-[#0b1020] text-slate-100 lg:flex">
       <Sidebar onLogout={logout} />
 
-      <section className="content">
-        <header className="topbar">
-          <div>
-            <div className="eyebrow">WORKSPACE / OVERVIEW</div>
-            <h1>Automation workspace</h1>
-            <p>Design, run, and inspect your workflows.</p>
-          </div>
-          <span className="status-pill">● API connected</span>
-        </header>
-
-        {error && <div className="alert error">{error}</div>}
-        {notice && <div className="alert success">{notice}</div>}
-
-        <div id="overview" className="cards">
-          <article>
-            <span>WORKSPACES</span>
-            <strong>{workspaces.length}</strong>
-            <small>Available to your account</small>
-          </article>
-          <article>
-            <span>WORKFLOWS</span>
-            <strong>{workflows.length}</strong>
-            <small>In selected workspace</small>
-          </article>
-          <article>
-            <span>RECENT EXECUTIONS</span>
-            <strong>{runs.length}</strong>
-            <small>Latest 20 for selected workflow</small>
-          </article>
-        </div>
-
-        <section className="panel">
-          <div className="section-heading">
+      <div className="min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
+        <div className="mx-auto flex max-w-[1440px] flex-col gap-6">
+          <header className="mb-3 flex flex-wrap items-center justify-between gap-6">
             <div>
-              <div className="eyebrow">01 / WORKSPACE</div>
-              <h2>Choose a workspace</h2>
+              <div className="mb-4 text-[11px] font-bold tracking-[0.18em] text-indigo-400">
+                WORKSPACE / OVERVIEW
+              </div>
+              <h1 className="text-3xl font-extrabold tracking-tight text-slate-50 sm:text-4xl">
+                Automation workspace
+              </h1>
+              <p className="mt-4 text-sm text-slate-400 sm:text-base">
+                Design, run, and inspect your workflows.
+              </p>
             </div>
-          </div>
-          <select
-            value={workspaceId}
-            onChange={(event) => setWorkspaceId(event.target.value)}
-          >
-            <option value="">Select workspace</option>
-            {workspaces.map((workspace) => (
-              <option key={workspace.id} value={workspace.id}>
-                {workspace.name}
-              </option>
-            ))}
-          </select>
-          {selectedWorkspace && (
-            <p className="muted">
-              {selectedWorkspace.name} · {selectedWorkspace.role ?? "Member"}
-            </p>
-          )}
-          <form
-            className="inline-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void createWorkspace();
-            }}
-          >
-            <input
-              required
-              minLength={2}
-              placeholder="New workspace name"
-              value={workspaceName}
-              onChange={(event) => setWorkspaceName(event.target.value)}
-            />
-            <button disabled={busy}>Create workspace</button>
-          </form>
-        </section>
 
-        {workspaceId && (
-          <section className="panel" id="workflows">
-            <div className="eyebrow">02 / WORKFLOWS</div>
-            <h2>Your workflows</h2>
-            <select
-              value={workflowId}
-              onChange={(event) => setWorkflowId(event.target.value)}
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-xs font-medium text-emerald-300">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              API connected
+            </span>
+          </header>
+
+          {error && (
+            <div
+              role="alert"
+              className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200"
             >
-              <option value="">Select workflow</option>
-              {workflows.map((workflow) => (
-                <option key={workflow.id} value={workflow.id}>
-                  {workflow.name}
+              {error}
+            </div>
+          )}
+
+          {notice && (
+            <div
+              role="status"
+              className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200"
+            >
+              {notice}
+            </div>
+          )}
+
+          <div id="overview" className="grid gap-4 md:grid-cols-3">
+            <StatCard
+              label="Workspaces"
+              value={workspaces.length}
+              description="Available to your account"
+              icon="workspaces"
+            />
+            <StatCard
+              label="Workflows"
+              value={workflows.length}
+              description="In selected workspace"
+              icon="workflows"
+            />
+            <StatCard
+              label="Recent executions"
+              value={runs.length}
+              description="Latest 20 for selected workflow"
+              icon="executions"
+            />
+          </div>
+
+          <section className={panelClass}>
+            <div className="mb-6">
+              <div className="mb-3 text-[11px] font-bold tracking-[0.18em] text-indigo-400">
+                01 / WORKSPACE
+              </div>
+              <h2 className="text-2xl font-bold tracking-tight text-slate-50">
+                Choose a workspace
+              </h2>
+            </div>
+
+            <select
+              className={inputClass}
+              value={workspaceId}
+              onChange={(event) => setWorkspaceId(event.target.value)}
+              aria-label="Choose workspace"
+            >
+              <option value="">Select workspace</option>
+              {workspaces.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>
+                  {workspace.name}
                 </option>
               ))}
             </select>
-            {selectedWorkflow && (
-              <p className="muted">
-                {selectedWorkflow.description || "No description"}
+
+            {selectedWorkspace && (
+              <p className="mt-3 text-xs text-slate-400">
+                {selectedWorkspace.name} · {selectedWorkspace.role ?? "Member"}
               </p>
             )}
+
             <form
-              className="stacked-form"
+              className="mt-6 flex flex-col gap-3 sm:flex-row"
               onSubmit={(event) => {
                 event.preventDefault();
-                void createWorkflow();
+                void createWorkspace();
               }}
             >
               <input
                 required
                 minLength={2}
-                placeholder="Workflow name"
-                value={workflowName}
-                onChange={(event) => setWorkflowName(event.target.value)}
+                className={`${inputClass} flex-1`}
+                placeholder="New workspace name"
+                aria-label="New workspace name"
+                value={workspaceName}
+                onChange={(event) => setWorkspaceName(event.target.value)}
               />
-              <input
-                placeholder="Description (optional)"
-                value={workflowDescription}
-                onChange={(event) => setWorkflowDescription(event.target.value)}
-              />
-              <button disabled={busy}>Create workflow</button>
+              <button disabled={busy} type="submit" className={buttonClass}>
+                Create workspace
+              </button>
             </form>
           </section>
-        )}
 
-        {workspaceId && workflowId && (
-          <>
-            <WorkflowBuilder
-              workflowName={selectedWorkflow?.name}
-              steps={steps}
-              busy={busy}
-              stepName={stepName}
-              setStepName={setStepName}
-              stepType={stepType}
-              setStepType={setStepType}
-              cron={cron}
-              setCron={setCron}
-              httpUrl={httpUrl}
-              setHttpUrl={setHttpUrl}
-              httpMethod={httpMethod}
-              setHttpMethod={setHttpMethod}
-              onAddStep={addStep}
-            />
+          {workspaceId && (
+            <section id="workflows" className={panelClass}>
+              <div className="mb-6">
+                <div className="mb-3 text-[11px] font-bold tracking-[0.18em] text-indigo-400">
+                  02 / WORKFLOWS
+                </div>
+                <h2 className="text-2xl font-bold tracking-tight text-slate-50">
+                  Your workflows
+                </h2>
+              </div>
 
-            <RunHistory
-              runs={runs}
-              selectedRun={selectedRun}
-              busy={busy}
-              onRun={executeWorkflow}
-              onSelectRun={viewRun}
-            />
-          </>
-        )}
-      </section>
+              <select
+                className={inputClass}
+                value={workflowId}
+                onChange={(event) => setWorkflowId(event.target.value)}
+                aria-label="Choose workflow"
+              >
+                <option value="">Select workflow</option>
+                {workflows.map((workflow) => (
+                  <option key={workflow.id} value={workflow.id}>
+                    {workflow.name}
+                  </option>
+                ))}
+              </select>
+
+              {selectedWorkflow && (
+                <p className="mt-3 text-xs text-slate-400">
+                  {selectedWorkflow.description || "No description"}
+                </p>
+              )}
+
+              <form
+                className="mt-6 flex flex-col gap-3 border-t border-slate-700/70 pt-6"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void createWorkflow();
+                }}
+              >
+                <input
+                  required
+                  minLength={2}
+                  className={inputClass}
+                  placeholder="Workflow name"
+                  aria-label="Workflow name"
+                  value={workflowName}
+                  onChange={(event) => setWorkflowName(event.target.value)}
+                />
+
+                <input
+                  className={inputClass}
+                  placeholder="Description (optional)"
+                  aria-label="Workflow description"
+                  value={workflowDescription}
+                  onChange={(event) =>
+                    setWorkflowDescription(event.target.value)
+                  }
+                />
+
+                <div>
+                  <button disabled={busy} type="submit" className={buttonClass}>
+                    Create workflow
+                  </button>
+                </div>
+              </form>
+            </section>
+          )}
+
+          {workspaceId && workflowId && (
+            <>
+              <WorkflowBuilder
+                workflowName={selectedWorkflow?.name}
+                steps={steps}
+                busy={busy}
+                stepName={stepName}
+                setStepName={setStepName}
+                stepType={stepType}
+                setStepType={setStepType}
+                cron={cron}
+                setCron={setCron}
+                httpUrl={httpUrl}
+                setHttpUrl={setHttpUrl}
+                httpMethod={httpMethod}
+                setHttpMethod={setHttpMethod}
+                onAddStep={addStep}
+              />
+
+              <RunHistory
+                runs={runs}
+                selectedRun={selectedRun}
+                busy={busy}
+                onRun={executeWorkflow}
+                onSelectRun={viewRun}
+              />
+            </>
+          )}
+        </div>
+      </div>
     </main>
   );
 }

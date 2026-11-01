@@ -2,7 +2,7 @@
 
 @theme {
   --color-background: #0b1020;
-  --color-surface: #182238;
+  --color-surface: #172238;
   --color-surface-raised: #1e2a44;
   --color-border-subtle: #303b59;
 
@@ -14,4 +14,31 @@
 
   --color-success: #72e5b7;
   --color-danger: #ff9caa;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--color-background);
+  color: var(--color-text-primary);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
