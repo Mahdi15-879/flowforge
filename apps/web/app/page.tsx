@@ -6,6 +6,7 @@ import { WorkflowBuilder } from "../components/WorkflowBuilder";
 import { RunHistory } from "../components/RunHistory";
 import { StatCard } from "../components/StatCard";
 import { ApiHealthIndicator } from "../components/ApiHealthIndicator";
+import { apiRequest, SESSION_EXPIRED } from "../lib/api-client";
 
 type Workspace = {
   id: string;
@@ -44,9 +45,6 @@ type Run = {
     error?: unknown;
   }>;
 };
-
-const BASE = "/backend";
-const SESSION_EXPIRED = "SESSION_EXPIRED";
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -101,59 +99,12 @@ export default function Home() {
   const request = useCallback(
     async <T,>(path: string, options: RequestInit = {}): Promise<T> => {
       const requestToken = token;
-      const isAuthRequest = path.startsWith("/auth/");
-      const response = await fetch(`${BASE}${path}`, {
-        ...options,
-        headers: {
-          ...(options.body ? { "Content-Type": "application/json" } : {}),
-          ...(requestToken && !isAuthRequest
-            ? { Authorization: `Bearer ${requestToken}` }
-            : {}),
-          ...options.headers,
-        },
-        cache: "no-store",
+
+      return apiRequest<T>(path, options, {
+        token: requestToken,
+        onUnauthorized: () => clearSession(true),
+        isSessionCurrent: () => activeTokenRef.current === requestToken,
       });
-
-      if (!isAuthRequest && requestToken) {
-        if (activeTokenRef.current !== requestToken) {
-          throw new Error(SESSION_EXPIRED);
-        }
-        if (response.status === 401) {
-          clearSession(true);
-          throw new Error(SESSION_EXPIRED);
-        }
-      }
-
-      const text = await response.text();
-      let data: unknown = null;
-
-      if (
-        !isAuthRequest &&
-        requestToken &&
-        activeTokenRef.current !== requestToken
-      ) {
-        throw new Error(SESSION_EXPIRED);
-      }
-
-      if (text) {
-        try {
-          data = JSON.parse(text);
-        } catch {
-          throw new Error(`Invalid API response (${response.status})`);
-        }
-      }
-
-      if (!response.ok) {
-        const body = data as { message?: string | string[] } | null;
-        const detail = body?.message;
-        throw new Error(
-          Array.isArray(detail)
-            ? detail.join(", ")
-            : detail || `Request failed (${response.status})`,
-        );
-      }
-
-      return data as T;
     },
     [token, clearSession],
   );
