@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Pencil, Trash2 } from "lucide-react";
+import { ConfirmDeleteModal } from "../components/ConfirmDeleteModal";
 import { Sidebar } from "../components/Sidebar";
 import { WorkflowBuilder } from "../components/WorkflowBuilder";
 import { RunHistory } from "../components/RunHistory";
@@ -31,6 +33,10 @@ export default function Home() {
   const [workspaceName, setWorkspaceName] = useState("");
   const [workflowName, setWorkflowName] = useState("");
   const [workflowDescription, setWorkflowDescription] = useState("");
+  const [editingWorkflow, setEditingWorkflow] = useState(false);
+  const [confirmWorkflowDelete, setConfirmWorkflowDelete] = useState(false);
+  const [editWorkflowName, setEditWorkflowName] = useState("");
+  const [editWorkflowDescription, setEditWorkflowDescription] = useState("");
   const [stepName, setStepName] = useState("");
   const [stepType, setStepType] = useState<"TRIGGER" | "ACTION">("TRIGGER");
   const [httpUrl, setHttpUrl] = useState(
@@ -241,6 +247,67 @@ export default function Home() {
       await loadWorkflows();
       setWorkflowId(created.id);
       setNotice("Workflow created.");
+    });
+  }
+
+  async function updateWorkflow() {
+    if (!workspaceId || !workflowId || !editWorkflowName.trim()) return;
+    await perform(async () => {
+      await request(`/workspaces/${workspaceId}/workflows/${workflowId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: editWorkflowName.trim(),
+          description: editWorkflowDescription.trim() || null,
+        }),
+      });
+      await loadWorkflows();
+      setEditingWorkflow(false);
+      setNotice("Workflow updated.");
+    });
+  }
+
+  async function deleteWorkflow() {
+    if (!workspaceId || !workflowId) return;
+    await perform(async () => {
+      await request(`/workspaces/${workspaceId}/workflows/${workflowId}`, {
+        method: "DELETE",
+      });
+      setWorkflowId("");
+      resetWorkflowDetails();
+      await loadWorkflows();
+      setEditingWorkflow(false);
+      setNotice("Workflow deleted.");
+    });
+  }
+
+  async function updateStep(
+    stepId: string,
+    name: string,
+    config: Record<string, unknown>,
+  ) {
+    if (!workspaceId || !workflowId) return;
+    await perform(async () => {
+      await request(
+        `/workspaces/${workspaceId}/workflows/${workflowId}/steps/${stepId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ name: name.trim(), config }),
+        },
+      );
+      await loadWorkflowDetails();
+      setNotice("Step updated.");
+    });
+  }
+
+  async function deleteStep(stepId: string) {
+    if (!workspaceId || !workflowId) return;
+    await perform(async () => {
+      await request(
+        `/workspaces/${workspaceId}/workflows/${workflowId}/steps/${stepId}`,
+        { method: "DELETE" },
+      );
+      await loadWorkflowDetails();
+      setNotice("Step deleted.");
     });
   }
 
@@ -573,9 +640,82 @@ export default function Home() {
               </select>
 
               {selectedWorkflow && (
-                <p className="mt-3 text-xs text-slate-400">
-                  {selectedWorkflow.description || "No description"}
-                </p>
+                <div className="mt-4 space-y-3">
+                  <p className="text-xs text-slate-400">
+                    {selectedWorkflow.description || "No description"}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setEditWorkflowName(selectedWorkflow.name);
+                        setEditWorkflowDescription(
+                          selectedWorkflow.description || "",
+                        );
+                        setEditingWorkflow(true);
+                      }}
+                      className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-indigo-400/30 bg-indigo-400/10 px-4 py-2 text-sm font-medium text-indigo-200 transition hover:bg-indigo-400/20 disabled:opacity-50"
+                    >
+                      <Pencil size={16} aria-hidden="true" />
+                      Edit workflow
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setConfirmWorkflowDelete(true)}
+                      className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-rose-400/30 bg-rose-400/10 px-4 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-400/20 disabled:opacity-50"
+                    >
+                      <Trash2 size={16} aria-hidden="true" />
+                      Delete workflow
+                    </button>
+                  </div>
+                  {editingWorkflow && (
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void updateWorkflow();
+                      }}
+                      className="space-y-3 rounded-xl border border-slate-700 p-4"
+                    >
+                      <input
+                        className={inputClass}
+                        required
+                        minLength={2}
+                        maxLength={100}
+                        aria-label="Edit workflow name"
+                        value={editWorkflowName}
+                        onChange={(event) =>
+                          setEditWorkflowName(event.target.value)
+                        }
+                      />
+                      <input
+                        className={inputClass}
+                        aria-label="Edit workflow description"
+                        value={editWorkflowDescription}
+                        onChange={(event) =>
+                          setEditWorkflowDescription(event.target.value)
+                        }
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          disabled={busy}
+                          type="submit"
+                          className={buttonClass}
+                        >
+                          Save changes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingWorkflow(false)}
+                          className="rounded-lg border border-slate-600 px-4 py-2 text-sm"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
               )}
 
               <form
@@ -614,6 +754,19 @@ export default function Home() {
             </section>
           )}
 
+           <ConfirmDeleteModal
+             open={confirmWorkflowDelete && Boolean(selectedWorkflow)}
+             title="Delete workflow?"
+             itemName={selectedWorkflow?.name ?? ""}
+             description="This workflow and its associated data will be permanently deleted. This action cannot be undone."
+             busy={busy}
+             onCancel={() => setConfirmWorkflowDelete(false)}
+             onConfirm={() => {
+               setConfirmWorkflowDelete(false);
+               void deleteWorkflow();
+             }}
+           />
+
           {workspaceId && workflowId && (
             <>
               <WorkflowBuilder
@@ -631,6 +784,8 @@ export default function Home() {
                 httpMethod={httpMethod}
                 setHttpMethod={setHttpMethod}
                 onAddStep={addStep}
+                onUpdateStep={updateStep}
+                onDeleteStep={deleteStep}
               />
 
               <RunHistory
