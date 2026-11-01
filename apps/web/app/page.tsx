@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Sidebar } from "../components/Sidebar";
 import { WorkflowBuilder } from "../components/WorkflowBuilder";
 import { RunHistory } from "../components/RunHistory";
@@ -8,7 +8,8 @@ import { StatCard } from "../components/StatCard";
 import { ApiHealthIndicator } from "../components/ApiHealthIndicator";
 import { apiRequest, SESSION_EXPIRED } from "../lib/api-client";
 import { useAuth } from "../hooks/useAuth";
-import type { Workspace, Workflow, Step, Run } from "../types/workflow";
+import { useWorkspaces } from "../hooks/useWorkspaces";
+import type { Workflow, Step, Run } from "../types/workflow";
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -25,8 +26,6 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [workspaceId, setWorkspaceId] = useState("");
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [workflowId, setWorkflowId] = useState("");
   const [steps, setSteps] = useState<Step[]>([]);
@@ -45,13 +44,13 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const resetWorkspacesRef = useRef<() => void>(() => {});
 
   const clearSession = useCallback(
     (expired = false) => {
       clearAuth();
+      resetWorkspacesRef.current();
       setMode("login");
-      setWorkspaces([]);
-      setWorkspaceId("");
       setWorkflows([]);
       setWorkflowId("");
       setSteps([]);
@@ -78,28 +77,24 @@ export default function Home() {
     [token, clearSession],
   );
 
+  const {
+    workspaces,
+    workspaceId,
+    setWorkspaceId,
+    loadWorkspaces,
+    resetWorkspaces,
+  } = useWorkspaces({
+    request,
+    activeTokenRef,
+  });
+
+  resetWorkspacesRef.current = resetWorkspaces;
+
   function handleLoadError(err: unknown) {
     if (err instanceof Error && err.message === SESSION_EXPIRED) return;
     if (!activeTokenRef.current) return;
     setError(messageOf(err));
   }
-
-  const loadWorkspaces = useCallback(async () => {
-    const sessionToken = activeTokenRef.current;
-    const data = await request<Workspace[]>("/workspaces");
-    if (activeTokenRef.current !== sessionToken) return;
-    const normalized = data.map((item) =>
-      item.workspace
-        ? { ...item.workspace, role: item.role ?? item.membership?.role }
-        : item,
-    );
-    setWorkspaces(normalized);
-    setWorkspaceId((current) =>
-      normalized.some((item) => item.id === current)
-        ? current
-        : (normalized[0]?.id ?? ""),
-    );
-  }, [request]);
 
   const loadWorkflows = useCallback(async () => {
     if (!workspaceId) return;
