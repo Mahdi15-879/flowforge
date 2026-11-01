@@ -84,4 +84,102 @@ export class WorkflowExecutionService {
       return run;
     });
   }
+
+  async listRuns(userId: string, workspaceId: string, workflowId: string) {
+    await this.workspaceAccess.requireRole(userId, workspaceId, [
+      "OWNER",
+      "ADMIN",
+      "MEMBER",
+    ]);
+
+    const workflow = await this.prisma.workflow.findFirst({
+      where: {
+        id: workflowId,
+        workspaceId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!workflow) {
+      throw new NotFoundException("Workflow not found");
+    }
+
+    return this.prisma.workflowRun.findMany({
+      where: {
+        workflowId,
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 20,
+      select: {
+        id: true,
+        workflowId: true,
+        status: true,
+        createdAt: true,
+        startedAt: true,
+        finishedAt: true,
+        _count: {
+          select: {
+            stepRuns: true,
+          },
+        },
+      },
+    });
+  }
+
+  async getRun(
+    userId: string,
+    workspaceId: string,
+    workflowId: string,
+    runId: string,
+  ) {
+    await this.workspaceAccess.requireRole(userId, workspaceId, [
+      "OWNER",
+      "ADMIN",
+      "MEMBER",
+    ]);
+
+    const run = await this.prisma.workflowRun.findFirst({
+      where: {
+        id: runId,
+        workflowId,
+        workflow: {
+          workspaceId,
+        },
+      },
+      select: {
+        id: true,
+        workflowId: true,
+        status: true,
+        createdAt: true,
+        startedAt: true,
+        finishedAt: true,
+        stepRuns: {
+          orderBy: {
+            position: "asc",
+          },
+          select: {
+            id: true,
+            stepId: true,
+            stepName: true,
+            stepType: true,
+            position: true,
+            status: true,
+            output: true,
+            error: true,
+            createdAt: true,
+            startedAt: true,
+            finishedAt: true,
+          },
+        },
+      },
+    });
+
+    if (!run) {
+      throw new NotFoundException("Workflow run not found");
+    }
+
+    return run;
+  }
 }

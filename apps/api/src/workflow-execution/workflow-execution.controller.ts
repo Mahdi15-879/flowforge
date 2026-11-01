@@ -1,4 +1,4 @@
-import { Controller, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -23,6 +23,65 @@ export class WorkflowExecutionController {
     private readonly workflowExecutionService: WorkflowExecutionService,
     private readonly orchestrator: WorkflowOrchestratorService,
   ) {}
+
+  @Get()
+  @ApiOperation({ summary: "List recent workflow runs" })
+  @ApiParam({ name: "workspaceId", type: String })
+  @ApiParam({ name: "workflowId", type: String })
+  @ApiResponse({
+    status: 200,
+    description: "The 20 most recent workflow runs",
+  })
+  @ApiResponse({
+    status: 401,
+    description: "Unauthorized",
+  })
+  @ApiResponse({
+    status: 404,
+    description: "Workspace or workflow not found",
+  })
+  async listRuns(
+    @Req() request: AuthenticatedRequest,
+    @Param("workspaceId") workspaceId: string,
+    @Param("workflowId") workflowId: string,
+  ) {
+    return this.workflowExecutionService.listRuns(
+      request.user.id,
+      workspaceId,
+      workflowId,
+    );
+  }
+
+  @Get(":runId")
+  @ApiOperation({ summary: "Get workflow run details and step results" })
+  @ApiParam({ name: "workspaceId", type: String })
+  @ApiParam({ name: "workflowId", type: String })
+  @ApiParam({ name: "runId", type: String })
+  @ApiResponse({
+    status: 200,
+    description: "Workflow run details with ordered step results",
+  })
+  @ApiResponse({
+    status: 401,
+    description: "Unauthorized",
+  })
+  @ApiResponse({
+    status: 404,
+    description: "Workflow run not found or access denied",
+  })
+  async getRun(
+    @Req() request: AuthenticatedRequest,
+    @Param("workspaceId") workspaceId: string,
+    @Param("workflowId") workflowId: string,
+    @Param("runId") runId: string,
+  ) {
+    return this.workflowExecutionService.getRun(
+      request.user.id,
+      workspaceId,
+      workflowId,
+      runId,
+    );
+  }
 
   @Post()
   @ApiOperation({ summary: "Start a workflow run" })
