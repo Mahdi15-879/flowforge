@@ -1,8 +1,17 @@
 "use client";
 
-import type { FormEvent } from "react";
-import { ArrowDown, Clock3, Globe2, Plus, Workflow } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import {
+  ArrowDown,
+  Clock3,
+  Globe2,
+  Pencil,
+  Plus,
+  Trash2,
+  Workflow,
+} from "lucide-react";
 import type { Step } from "../types/workflow";
+import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 
 type WorkflowBuilderProps = {
   workflowName?: string;
@@ -19,6 +28,12 @@ type WorkflowBuilderProps = {
   httpMethod: string;
   setHttpMethod: (value: string) => void;
   onAddStep: () => void | Promise<void>;
+  onUpdateStep: (
+    stepId: string,
+    name: string,
+    config: Record<string, unknown>,
+  ) => void | Promise<void>;
+  onDeleteStep: (stepId: string) => void | Promise<void>;
 };
 
 const inputClass =
@@ -41,7 +56,15 @@ export function WorkflowBuilder({
   httpMethod,
   setHttpMethod,
   onAddStep,
+  onUpdateStep,
+  onDeleteStep,
 }: WorkflowBuilderProps) {
+  const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  const [stepToDelete, setStepToDelete] = useState<Step | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [editingConfig, setEditingConfig] = useState<Record<string, unknown>>(
+    {},
+  );
   const orderedSteps = [...steps].sort((a, b) => a.position - b.position);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -52,7 +75,7 @@ export function WorkflowBuilder({
   return (
     <section
       id="steps"
-      className="mb-6 rounded-2xl border border-slate-700/70 bg-[#172238] p-5 shadow-xl shadow-black/10 md:p-7"
+      className="rounded-2xl border border-slate-700/70 bg-[#172238] p-5 shadow-xl shadow-black/10 md:p-7"
     >
       <div className="mb-3 flex items-center gap-2 text-[11px] font-bold tracking-[0.18em] text-indigo-400">
         <Workflow size={16} />
@@ -128,10 +151,141 @@ export function WorkflowBuilder({
                         </span>
                       </div>
 
-                      <span className="self-start font-mono text-xs text-slate-400">
-                        {String(index + 1).padStart(2, "0")}
-                      </span>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="mr-1 font-mono text-xs text-slate-400">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Edit ${step.name}`}
+                          title="Edit step"
+                          disabled={busy}
+                          onClick={() => {
+                            setEditingStepId(step.id);
+                            setEditingName(step.name);
+                            setEditingConfig({ ...step.config });
+                          }}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-indigo-400/25 bg-indigo-400/10 text-indigo-300 transition hover:border-indigo-400/50 hover:bg-indigo-400/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Pencil size={16} aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Delete ${step.name}`}
+                          title="Delete step"
+                          disabled={busy}
+                          onClick={() => setStepToDelete(step)}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-400/25 bg-rose-400/10 text-rose-300 transition hover:border-rose-400/50 hover:bg-rose-400/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </button>
+                      </div>
                     </article>
+                    {editingStepId === step.id && (
+                      <form
+                        onSubmit={async (event) => {
+                          event.preventDefault();
+
+                          if (!editingName.trim() || busy) return;
+
+                          try {
+                            await onUpdateStep(
+                              step.id,
+                              editingName,
+                              editingConfig,
+                            );
+
+                            setEditingStepId(null);
+                          } catch (error) {
+                            console.error("Failed to update step:", error);
+                          }
+                        }}
+                        className="mt-3 space-y-3 rounded-xl border border-slate-600 bg-[#1a243b] p-4"
+                      >
+                        <label className={labelClass}>
+                          Step name
+                          <input
+                            className={inputClass}
+                            required
+                            minLength={2}
+                            maxLength={100}
+                            value={editingName}
+                            onChange={(event) =>
+                              setEditingName(event.target.value)
+                            }
+                          />
+                        </label>
+                        {step.type === "TRIGGER" &&
+                          editingConfig.operation === "SCHEDULE" && (
+                            <label className={labelClass}>
+                              Cron expression
+                              <input
+                                className={inputClass}
+                                required
+                                value={String(editingConfig.cron ?? "")}
+                                onChange={(event) =>
+                                  setEditingConfig({
+                                    ...editingConfig,
+                                    cron: event.target.value,
+                                  })
+                                }
+                              />
+                            </label>
+                          )}
+                        {step.type === "ACTION" &&
+                          editingConfig.operation === "HTTP_REQUEST" && (
+                            <>
+                              <label className={labelClass}>
+                                HTTPS endpoint
+                                <input
+                                  className={inputClass}
+                                  required
+                                  type="url"
+                                  value={String(editingConfig.url ?? "")}
+                                  onChange={(event) =>
+                                    setEditingConfig({
+                                      ...editingConfig,
+                                      url: event.target.value,
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label className={labelClass}>
+                                HTTP method
+                                <select
+                                  className={inputClass}
+                                  value={String(editingConfig.method ?? "GET")}
+                                  onChange={(event) =>
+                                    setEditingConfig({
+                                      ...editingConfig,
+                                      method: event.target.value,
+                                    })
+                                  }
+                                >
+                                  <option value="GET">GET</option>
+                                  <option value="POST">POST</option>
+                                </select>
+                              </label>
+                            </>
+                          )}
+                        <div className="flex gap-3">
+                          <button
+                            type="submit"
+                            disabled={busy}
+                            className="rounded-lg bg-indigo-500 px-4 py-2 text-sm text-white disabled:opacity-50"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingStepId(null)}
+                            className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    )}
 
                     {index < orderedSteps.length - 1 && (
                       <div
@@ -244,6 +398,20 @@ export function WorkflowBuilder({
           </button>
         </form>
       </div>
+      <ConfirmDeleteModal
+        open={stepToDelete !== null}
+        title="Delete step?"
+        itemName={stepToDelete?.name ?? ""}
+        description="This step will be permanently deleted. This action cannot be undone."
+        busy={busy}
+        onCancel={() => setStepToDelete(null)}
+        onConfirm={() => {
+          if (!stepToDelete) return;
+          const id = stepToDelete.id;
+          setStepToDelete(null);
+          void onDeleteStep(id);
+        }}
+      />
     </section>
   );
 }
