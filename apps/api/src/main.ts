@@ -5,7 +5,14 @@ import { AppModule } from "./app.module";
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix("api/v1");
-  app.enableCors({ origin: ["http://localhost:3000"] });
+  const allowedOrigins = [
+    "http://localhost:3000",
+    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+  ];
+
+  app.enableCors({
+    origin: allowedOrigins,
+  });
   const config = new DocumentBuilder()
     .setTitle("FlowForge API")
     .setVersion("1.0")
