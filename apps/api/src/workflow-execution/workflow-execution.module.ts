@@ -7,6 +7,7 @@ import { WorkflowExecutionController } from "./workflow-execution.controller";
 import { WorkflowRunnerService } from "./workflow-runner.service";
 import { StepRunnerService } from "./step-runner.service";
 import { WorkflowOrchestratorService } from "./workflow-orchestrator.service";
+import { HttpActionExecutorService } from "./http-action-executor.service";
 
 @Module({
   imports: [JwtModule.register({}), WorkspaceModule],
@@ -16,6 +17,7 @@ import { WorkflowOrchestratorService } from "./workflow-orchestrator.service";
     StepRunnerService,
     WorkflowOrchestratorService,
     JwtAuthGuard,
+    HttpActionExecutorService,
   ],
   controllers: [WorkflowExecutionController],
 })
