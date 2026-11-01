@@ -11,13 +11,24 @@ type UseWorkspacesOptions = {
   activeTokenRef: MutableRefObject<string>;
 };
 
+const STORAGE_KEY = "flowforge:selectedWorkspace";
+
 export function useWorkspaces({
   request,
   activeTokenRef,
 }: UseWorkspacesOptions) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [workspaceId, setWorkspaceId] = useState("");
+  const [workspaceId, setWorkspaceIdState] = useState("");
+
   const workspaceRequestVersionRef = useRef(0);
+
+  const setWorkspaceId = useCallback((id: string) => {
+    setWorkspaceIdState(id);
+
+    if (id) {
+      localStorage.setItem(STORAGE_KEY, id);
+    }
+  }, []);
 
   const loadWorkspaces = useCallback(async () => {
     const requestVersion = workspaceRequestVersionRef.current;
@@ -43,17 +54,22 @@ export function useWorkspaces({
 
     setWorkspaces(normalized);
 
-    setWorkspaceId((current) =>
-      normalized.some((item) => item.id === current)
-        ? current
-        : (normalized[0]?.id ?? ""),
-    );
+    const savedId = localStorage.getItem(STORAGE_KEY);
+
+    setWorkspaceIdState((current) => {
+      const preferredId = current || savedId || "";
+
+      return normalized.some((item) => item.id === preferredId)
+        ? preferredId
+        : (normalized[0]?.id ?? "");
+    });
   }, [request, activeTokenRef]);
 
   const resetWorkspaces = useCallback(() => {
     workspaceRequestVersionRef.current += 1;
+
     setWorkspaces([]);
-    setWorkspaceId("");
+    setWorkspaceIdState("");
   }, []);
 
   return {

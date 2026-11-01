@@ -18,11 +18,24 @@ export function useWorkflows({
   workspaceId,
 }: UseWorkflowsOptions) {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
-  const [workflowId, setWorkflowId] = useState("");
+  const [workflowId, setWorkflowIdState] = useState("");
+  const [loadedWorkspaceId, setLoadedWorkspaceId] = useState("");
 
   const requestVersionRef = useRef(0);
   const currentWorkspaceIdRef = useRef(workspaceId);
+
   currentWorkspaceIdRef.current = workspaceId;
+
+  const setWorkflowId = useCallback(
+    (id: string) => {
+      setWorkflowIdState(id);
+
+      if (workspaceId && id) {
+        localStorage.setItem(`flowforge:selectedWorkflow:${workspaceId}`, id);
+      }
+    },
+    [workspaceId],
+  );
 
   const loadWorkflows = useCallback(async () => {
     if (!workspaceId) return;
@@ -43,17 +56,28 @@ export function useWorkflows({
       return;
     }
 
+    setLoadedWorkspaceId(requestedWorkspaceId);
     setWorkflows(data);
 
-    setWorkflowId((current) =>
-      data.some((item) => item.id === current) ? current : (data[0]?.id ?? ""),
-    );
+    const storageKey = `flowforge:selectedWorkflow:${requestedWorkspaceId}`;
+
+    const savedId = localStorage.getItem(storageKey);
+
+    setWorkflowIdState((current) => {
+      const preferredId = savedId || current;
+
+      return data.some((item) => item.id === preferredId)
+        ? preferredId
+        : (data[0]?.id ?? "");
+    });
   }, [request, activeTokenRef, workspaceId]);
 
   const resetWorkflows = useCallback(() => {
     requestVersionRef.current += 1;
+
+    setLoadedWorkspaceId("");
     setWorkflows([]);
-    setWorkflowId("");
+    setWorkflowIdState("");
   }, []);
 
   return {
@@ -61,6 +85,7 @@ export function useWorkflows({
     setWorkflows,
     workflowId,
     setWorkflowId,
+    loadedWorkspaceId,
     loadWorkflows,
     resetWorkflows,
   };
