@@ -7,6 +7,11 @@ import { RunHistory } from "../components/RunHistory";
 import { StatCard } from "../components/StatCard";
 import { ApiHealthIndicator } from "../components/ApiHealthIndicator";
 import { apiRequest, SESSION_EXPIRED } from "../lib/api-client";
+import {
+  getSessionToken,
+  saveSessionToken,
+  removeSessionToken,
+} from "../lib/session";
 
 type Workspace = {
   id: string;
@@ -81,7 +86,7 @@ export default function Home() {
   activeTokenRef.current = token;
 
   const clearSession = useCallback((expired = false) => {
-    sessionStorage.removeItem("flowforge_token");
+    removeSessionToken();
     activeTokenRef.current = "";
     setToken("");
     setMode("login");
@@ -159,7 +164,7 @@ export default function Home() {
   }, [request, workspaceId, workflowId]);
 
   useEffect(() => {
-    const saved = sessionStorage.getItem("flowforge_token");
+    const saved = getSessionToken();
     if (saved) setToken(saved);
   }, []);
 
@@ -229,7 +234,7 @@ export default function Home() {
         throw new Error("Login succeeded but no access token was returned.");
       }
 
-      sessionStorage.setItem("flowforge_token", accessToken);
+      saveSessionToken(accessToken);
       activeTokenRef.current = accessToken;
       setToken(accessToken);
       setNotice("Signed in successfully.");
