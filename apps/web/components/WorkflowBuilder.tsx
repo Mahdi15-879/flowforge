@@ -2,18 +2,11 @@
 
 import type { FormEvent } from "react";
 import { ArrowDown, Clock3, Globe2, Plus, Workflow } from "lucide-react";
-
-export type WorkflowStep = {
-  id: string;
-  name: string;
-  type: string;
-  position: number;
-  config?: Record<string, unknown> | null;
-};
+import type { Step } from "../types/workflow";
 
 type WorkflowBuilderProps = {
   workflowName?: string;
-  steps: WorkflowStep[];
+  steps: Step[];
   busy: boolean;
   stepName: string;
   setStepName: (value: string) => void;

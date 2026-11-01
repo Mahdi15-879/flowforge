@@ -13,27 +13,11 @@ import {
   Terminal,
 } from "lucide-react";
 import { StatusBadge } from "./StatusBadge";
-
-export type RunStep = {
-  id: string;
-  stepName: string;
-  status: string;
-  output?: unknown;
-  error?: unknown;
-};
-
-export type WorkflowRun = {
-  id: string;
-  status: string;
-  createdAt?: string;
-  startedAt?: string | null;
-  finishedAt?: string | null;
-  stepRuns?: RunStep[];
-};
+import type { Run } from "../types/workflow";
 
 type RunHistoryProps = {
-  runs: WorkflowRun[];
-  selectedRun: WorkflowRun | null;
+  runs: Run[];
+  selectedRun: Run | null;
   busy: boolean;
   onRun: () => void | Promise<void>;
   onSelectRun: (id: string) => void | Promise<void>;

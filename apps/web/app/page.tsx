@@ -12,44 +12,7 @@ import {
   saveSessionToken,
   removeSessionToken,
 } from "../lib/session";
-
-type Workspace = {
-  id: string;
-  name: string;
-  slug?: string;
-  role?: string;
-  membership?: { role?: string };
-  workspace?: { id: string; name: string; slug?: string };
-};
-
-type Workflow = {
-  id: string;
-  name: string;
-  description?: string | null;
-};
-
-type Step = {
-  id: string;
-  name: string;
-  type: "TRIGGER" | "ACTION";
-  position: number;
-  config?: Record<string, unknown>;
-};
-
-type Run = {
-  id: string;
-  status: string;
-  createdAt?: string;
-  startedAt?: string | null;
-  finishedAt?: string | null;
-  stepRuns?: Array<{
-    id: string;
-    stepName: string;
-    status: string;
-    output?: unknown;
-    error?: unknown;
-  }>;
-};
+import type { Workspace, Workflow, Step, Run } from "../types/workflow";
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
