@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Sidebar } from "../components/Sidebar";
+import { WorkflowBuilder } from "../components/WorkflowBuilder";
+import { RunHistory } from "../components/RunHistory";
 
 type Workspace = {
   id: string;
@@ -424,19 +427,7 @@ export default function Home() {
 
   return (
     <main className="shell">
-      <aside className="sidebar">
-        <div className="brand">◆ FlowForge</div>
-        <div className="sidebar-label">AUTOMATION PLATFORM</div>
-        <nav>
-          <a href="#overview">Overview</a>
-          <a href="#workflows">Workflows</a>
-          <a href="#steps">Workflow builder</a>
-          <a href="#executions">Executions</a>
-        </nav>
-        <button className="secondary logout" onClick={logout}>
-          Sign out
-        </button>
-      </aside>
+      <Sidebar onLogout={logout} />
 
       <section className="content">
         <header className="topbar">
@@ -556,163 +547,30 @@ export default function Home() {
 
         {workspaceId && workflowId && (
           <>
-            <section className="panel" id="steps">
-              <div className="eyebrow">03 / WORKFLOW BUILDER</div>
-              <h2>Steps · {selectedWorkflow?.name}</h2>
-              {steps.length === 0 ? (
-                <p>No steps yet. Add a trigger, then an action.</p>
-              ) : (
-                <div className="step-list">
-                  {steps
-                    .slice()
-                    .sort((a, b) => a.position - b.position)
-                    .map((step, index) => (
-                      <div className="step-item" key={step.id}>
-                        <span className="step-number">{index + 1}</span>
-                        <div>
-                          <strong>{step.name}</strong>
-                          <small>
-                            {step.type} ·{" "}
-                            {String(step.config?.operation ?? "Legacy")}
-                          </small>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
+            <WorkflowBuilder
+              workflowName={selectedWorkflow?.name}
+              steps={steps}
+              busy={busy}
+              stepName={stepName}
+              setStepName={setStepName}
+              stepType={stepType}
+              setStepType={setStepType}
+              cron={cron}
+              setCron={setCron}
+              httpUrl={httpUrl}
+              setHttpUrl={setHttpUrl}
+              httpMethod={httpMethod}
+              setHttpMethod={setHttpMethod}
+              onAddStep={addStep}
+            />
 
-              <form
-                className="stacked-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void addStep();
-                }}
-              >
-                <h3>Add workflow step</h3>
-                <input
-                  required
-                  minLength={2}
-                  placeholder="Step name"
-                  value={stepName}
-                  onChange={(event) => setStepName(event.target.value)}
-                />
-                <select
-                  value={stepType}
-                  onChange={(event) =>
-                    setStepType(event.target.value as "TRIGGER" | "ACTION")
-                  }
-                >
-                  <option value="TRIGGER">Schedule trigger</option>
-                  <option value="ACTION">HTTP request action</option>
-                </select>
-                {stepType === "TRIGGER" ? (
-                  <>
-                    <label>
-                      Cron expression
-                      <input
-                        value={cron}
-                        onChange={(event) => setCron(event.target.value)}
-                        required
-                      />
-                    </label>
-                    <p className="muted">
-                      Schedule configuration only. Automatic scheduling is not
-                      yet enabled; use Run workflow to execute manually.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <label>
-                      HTTPS URL
-                      <input
-                        required
-                        type="url"
-                        value={httpUrl}
-                        onChange={(event) => setHttpUrl(event.target.value)}
-                      />
-                    </label>
-                    <label>
-                      HTTP method
-                      <select
-                        value={httpMethod}
-                        onChange={(event) => setHttpMethod(event.target.value)}
-                      >
-                        <option value="GET">GET</option>
-                        <option value="POST">POST</option>
-                      </select>
-                    </label>
-                    <p className="muted">
-                      Current backend allowlist: httpbin.org and
-                      jsonplaceholder.typicode.com.
-                    </p>
-                  </>
-                )}
-                <button disabled={busy}>Add step</button>
-              </form>
-            </section>
-
-            <section className="panel" id="executions">
-              <div className="section-heading">
-                <div>
-                  <div className="eyebrow">04 / EXECUTIONS</div>
-                  <h2>Run history</h2>
-                </div>
-                <button disabled={busy} onClick={() => void executeWorkflow()}>
-                  {busy ? "Working..." : "▶ Run workflow"}
-                </button>
-              </div>
-              {runs.length === 0 ? (
-                <p>No executions yet.</p>
-              ) : (
-                <div className="run-list">
-                  {runs.map((run) => (
-                    <button
-                      key={run.id}
-                      className="run-item"
-                      disabled={busy}
-                      onClick={() => void viewRun(run.id)}
-                      aria-expanded={selectedRun?.id === run.id}
-                    >
-                      <span
-                        className={`run-status ${run.status.toLowerCase()}`}
-                      >
-                        {run.status}
-                      </span>
-                      <span>{formatDate(run.createdAt)}</span>
-                      <span className="run-id">{run.id.slice(0, 8)}</span>
-                      <span>
-                        {selectedRun?.id === run.id
-                          ? "Hide details ↑"
-                          : "View details ↓"}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {selectedRun && (
-                <div className="run-detail">
-                  <h3>Execution details</h3>
-                  <p>
-                    Status: <strong>{selectedRun.status}</strong>
-                  </p>
-                  <p>Started: {formatDate(selectedRun.startedAt)}</p>
-                  <p>Finished: {formatDate(selectedRun.finishedAt)}</p>
-                  {selectedRun.stepRuns?.map((step) => (
-                    <article key={step.id} className="step-result">
-                      <strong>
-                        {step.stepName} — {step.status}
-                      </strong>
-                      {step.output != null && (
-                        <pre>{JSON.stringify(step.output, null, 2)}</pre>
-                      )}
-                      {step.error != null && (
-                        <pre>{JSON.stringify(step.error, null, 2)}</pre>
-                      )}
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
+            <RunHistory
+              runs={runs}
+              selectedRun={selectedRun}
+              busy={busy}
+              onRun={executeWorkflow}
+              onSelectRun={viewRun}
+            />
           </>
         )}
       </section>
